@@ -565,7 +565,7 @@
           </material>
         </visual>
       </link>
-    </model> 
+    </model>
 
     <model name="box12">
       <pose>-4 -7.5 1.72 0 0 0</pose>
@@ -604,11 +604,7 @@
       </link>
     </model>
 
-    <include>
-      <uri>model://swift_pico</uri>
-      <name>swift_pico</name>
-      <pose>0 0 0.157 0 0 0</pose>
-    </include>
+
     <include>
       <uri>model://arena</uri>
       <name>arena</name>
