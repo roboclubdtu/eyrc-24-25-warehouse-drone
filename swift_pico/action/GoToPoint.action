@@ -1,0 +1,8 @@
+# Goal
+geometry_msgs/Point goal
+---
+# Result
+bool arrived
+---
+# Feedback
+float32 distance
