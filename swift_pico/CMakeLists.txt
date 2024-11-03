@@ -22,6 +22,8 @@ find_package(rosidl_default_generators REQUIRED)
 # interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/GoToPoint.action"
+  "action/NavigatePath.action"
+  "action/Hover.action"
   DEPENDENCIES geometry_msgs
 )
 
