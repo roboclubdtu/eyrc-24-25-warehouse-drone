@@ -10,7 +10,7 @@ import rclpy
 from rclpy.node import Node
 
 
-class Swift_Pico(Node):
+class PicoControllerNode(Node):
     def __init__(self):
         super().__init__('pico_controller')  # initializing ros node with name pico_controller
 
@@ -158,7 +158,7 @@ class Swift_Pico(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    swift_pico = Swift_Pico()
+    swift_pico =    PicoControllerNode()
     rclpy.spin(swift_pico)
     swift_pico.destroy_node()
     rclpy.shutdown()
