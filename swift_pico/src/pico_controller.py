@@ -4,11 +4,55 @@
 # Importing the required libraries
 
 from swift_msgs.msg import SwiftMsgs
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseArray, Pose
 from pid_msg.msg import PIDTune, PIDError
 import rclpy
 from rclpy.node import Node
 
+SAMPLE_TIME_S = 0.060
+
+class PID:
+    def __init__(self, sample_time=SAMPLE_TIME_S, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2000.0, min_output=1000.0, offset=0.0):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.sample_time = sample_time
+        self.max_output = max_output
+        self.min_output = min_output
+
+        self.error = 0
+        self.offset = offset
+        
+        self.reset()
+    
+    def set_gains(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+
+    def compute(self, setpoint, current_value, clip_output=False):
+        error = setpoint - current_value
+        self.integral += error * self.sample_time
+        derivative = (error - self.prev_error) / self.sample_time
+
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+
+        output += self.offset
+        
+        if clip_output:
+            output = max(min(output, self.max_output), self.min_output)
+
+        output = abs(output) # to account for negative offsets
+
+        self.prev_error = error
+        
+        # for debugging
+        self.error = error
+        return output
+
+    def reset(self):
+        self.prev_error = 0
+        self.integral = 0
 
 class PicoControllerNode(Node):
     def __init__(self):
@@ -20,6 +64,10 @@ class PicoControllerNode(Node):
 
         # [x_setpoint, y_setpoint, z_setpoint]
         self.setpoint = [2, 2, 19]  # whycon marker at the position of the dummy given in the scene
+        self.setpoint_pose = Pose()
+        self.setpoint_pose.position.x = float(self.setpoint[0])
+        self.setpoint_pose.position.y = float(self.setpoint[1])
+        self.setpoint_pose.position.z = float(self.setpoint[2])
 
         # Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = SwiftMsgs()
@@ -29,23 +77,35 @@ class PicoControllerNode(Node):
         self.cmd.rc_throttle = 1500
 
         # Initial setting of Kp, Ki, Kd for [roll, pitch, throttle]
+        self.roll_controller = PID()
+        self.pitch_controller = PID()
+        self.throttle_controller = PID(offset=-1528)
+
         XY_P = 10
+        XY_I = 0
         XY_D = 35
         Z_constant = 18
         ratio = 2
         self.Kp = [XY_P, XY_P, Z_constant]
         self.Ki = [0, 0, 0]
         self.Kd = [XY_D, XY_D, Z_constant * ratio]
+        
+        # ---
+        self.roll_controller.set_gains(XY_P, XY_I, XY_D)
+        self.pitch_controller.set_gains(XY_P, XY_I, XY_D)
+        self.throttle_controller.set_gains(Z_constant, 0, Z_constant * ratio)
 
         # Additional PID variables
         self.prev_error = [0, 0, 0]  # Previous errors for [roll, pitch, throttle]
         self.error_sum = [0, 0, 0]  # Sum of errors for integral term
         self.max_values = [2000, 2000, 2000]  # Upper limit for [roll, pitch, throttle]
         self.min_values = [1000, 1000, 1000]  # Lower limit for [roll, pitch, throttle]
+
+        # NOTE: max_output not used
         self.max_output = 10  # Maximum allowable control signal to prevent sudden large changes
 
         # Sample time for running the PID algorithm
-        self.sample_time = 0.060  # in seconds
+        self.sample_time = SAMPLE_TIME_S
 
         # Publishing /drone_command, /pid_error
         self.command_pub = self.create_publisher(SwiftMsgs, '/drone_command', 10)
@@ -110,7 +170,6 @@ class PicoControllerNode(Node):
         # Skip PID calculation until valid position data is available
         if self.drone_position == [0.0, 0.0, 0.0]:
             return
-
         # Step 1: Compute error in each axis [roll (x), pitch (y), throttle (z)]
         error = [self.setpoint[i] - self.drone_position[i] for i in range(3)]
 
@@ -138,12 +197,29 @@ class PicoControllerNode(Node):
                 # Base of 1550 for maintaining steady position
                 self.cmd.rc_throttle = int(1528 - output)
                 self.cmd.rc_throttle = max(min(self.cmd.rc_throttle, self.max_values[2]), self.min_values[2])
+                self.get_logger().info(f"Current PID gains - Kp: {self.Kp[2]}, Ki: {self.Ki[2]}, Kd: {self.Kd[2]}")
+                self.get_logger().info(f"throttle error: {error[2]}, PID output: {output}, Throttle command: {self.cmd.rc_throttle}")
 
             # Step 7: Update previous error
             self.prev_error[i] = error[i]
 
             # Log the control signal output
-            self.get_logger().info(f"Drone position: {self.drone_position[2]}, throttle error: {error[2]}, Throttle command: {self.cmd.rc_throttle}, Control Signal: {output}")
+            # self.get_logger().info(f"Drone position: {self.drone_position[2]}, throttle error: {error[2]}, Throttle command: {self.cmd.rc_throttle}, Control Signal: {output}")
+            
+
+        # refactor code 
+        _current_x = self.drone_position[0]
+        _current_y = self.drone_position[1]
+        _current_z = self.drone_position[2]
+
+        rc_roll_pid_output = int(self.roll_controller.compute(self.setpoint_pose.position.x, _current_x))
+        rc_pitch_pid_output = int(self.pitch_controller.compute(self.setpoint_pose.position.y, _current_y))
+        rc_throttle_pid_output = int(self.throttle_controller.compute(self.setpoint_pose.position.z, _current_z))
+
+        rc_throttle_cmd = rc_throttle_pid_output
+        self.cmd.rc_throttle = rc_throttle_cmd
+
+        # /refactor code 
 
         # Step 6: Publish command after all adjustments
         self.command_pub.publish(self.cmd)
@@ -153,6 +229,16 @@ class PicoControllerNode(Node):
         pid_error_msg.roll_error = error[0]
         pid_error_msg.pitch_error = error[1]
         pid_error_msg.throttle_error = error[2]
+
+        # refactor code
+        pid_error_msg.roll_error = self.roll_controller.error
+        pid_error_msg.pitch_error = self.pitch_controller.error
+        pid_error_msg.throttle_error = self.throttle_controller.error
+
+        # /refactor code
+
+        self.get_logger().info(f"PID throttle error: {self.throttle_controller.error}, PID output: {rc_throttle_pid_output}, rc_roll_cmd: {rc_throttle_cmd}")
+
         self.pid_error_pub.publish(pid_error_msg)
 
 
