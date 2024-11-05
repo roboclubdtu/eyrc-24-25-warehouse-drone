@@ -2,35 +2,74 @@
 # WD_4122
 
 import time
+from enum import Enum
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-#import the action and service
+from waypoint_navigation.action import NavToWaypoint
+from waypoint_navigation.srv import GetWaypoints
 
+TIMER_INTERVAL_S = 0.5
+
+class State(Enum):
+    IDLE = 0
+    GETTING_PATH = 1
+    NAVIGATING = 2
 
 
 class WayPointClient(Node):
 
     def __init__(self):
         super().__init__('waypoint_client')
+        self.state = State.IDLE
         self.goals = []
         self.goal_index = 0
+
+        self.ros_interfaces_init()
+        self.get_logger().info(f"{self.get_name()} node has been started.")
+    
+    def ros_interfaces_init(self):
         #create an action client for the action 'NavToWaypoint'. Refer to Writing an action server and client (Python) in ROS 2 tutorials
         #action name should 'waypoint_navigation'.
 
         
         #create a client for the service 'GetWaypoints'. Refer to Writing a simple service and client (Python) in ROS 2 tutorials
         #service name should be 'waypoints'
-        
-        while not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('service not available, waiting again...')
+        self.get_waypoints_client = self.create_client(GetWaypoints, 'GetWaypoints')
 
-        #create a request object for GetWaypoints service.
-        
+        self.main_timer = self.create_timer(TIMER_INTERVAL_S, self.main_timer_callback)
 
+    ### State machine functions
+
+    def main_timer_callback(self):
+        state_fn = {
+            State.IDLE: self.idle_state,
+            State.GETTING_PATH: self.getting_path_state,
+            State.NAVIGATING: self.navigating_state
+        }
+
+        state_fn[self.state]()
     
-    ###action client functions
+    def idle_state(self):
+        # check if service is available
+        if not self.get_waypoints_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn('Service not available')
+            return
+        
+        self.change_state(State.GETTING_PATH)
+
+    def getting_path_state(self):
+        pass
+
+    def navigating_state(self):
+        pass
+
+    def change_state(self, state: State):
+        self.get_logger().info(f'State changed from {self.state} to {state}')
+        self.state = state
+    
+    ### action client functions
 
     def send_goal(self, waypoint):
 
@@ -49,13 +88,12 @@ class WayPointClient(Node):
     def goal_response_callback(self, future):
 
         #complete the goal_response_callback. Refer to Writing an action server and client (Python) in ROS 2 tutorials
-
-        
+        pass
 
     def get_result_callback(self, future):
-
+        return 
         #complete the missing line
-        result = 
+        # result = 
         self.get_logger().info('Result: {0}'.format(result.hov_time))
 
         self.goal_index += 1
@@ -66,9 +104,9 @@ class WayPointClient(Node):
             self.get_logger().info('All waypoints have been reached successfully')      
 
     def feedback_callback(self, feedback_msg):
-
+        return 
         #complete the missing line
-        feedback = 
+        # feedback = 
         x = feedback.current_waypoint.pose.position.x
         y = feedback.current_waypoint.pose.position.y
         z = feedback.current_waypoint.pose.position.z
@@ -76,17 +114,18 @@ class WayPointClient(Node):
         self.get_logger().info(f'Received feedback! The current whycon position is: {x}, {y}, {z}')
         self.get_logger().info(f'Max time inside sphere: {t}')
 
-
-    #service client functions
+    ### service client functions
 
     def send_request(self):
-        #  complete send_request method, which will send the request and return a future
+        request = GetWaypoints.Request()
+        future = self.get_waypoints_client.call_async(request)
+        return future
     
     def receive_goals(self):
         future = self.send_request()
-        #write a statement to execute the service until the future is complete
+        rclpy.spin_until_future_complete(self, future)
         
-        response = future.result()
+        response:GetWaypoints.Response = future.result()
         self.get_logger().info('Waypoints received by the action client')
 
         for pose in response.waypoints.poses:
