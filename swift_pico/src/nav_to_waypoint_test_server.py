@@ -7,6 +7,8 @@ from geometry_msgs.msg import Pose, PoseStamped
 from waypoint_navigation.action import NavToWaypoint
 import time
 
+DUMMY_NAV_TIME = 5
+
 class NavToWaypointActionServer(Node):
 
     def __init__(self):
@@ -26,6 +28,9 @@ class NavToWaypointActionServer(Node):
         self.get_logger().info("Received a goal request.")
         result = NavToWaypoint.Result()
 
+        # Dummy navigation, input process
+        self.get_logger().info(f"Navigating to {goal_handle.request.waypoint}")
+
         # Dummy feedback
         feedback_msg = NavToWaypoint.Feedback()
         feedback_msg.current_waypoint = PoseStamped()
@@ -34,7 +39,7 @@ class NavToWaypointActionServer(Node):
         start_time = time.time()
 
         # Publish feedback every 0.5 seconds, for 3 seconds
-        while (time.time() - start_time) < 3.0:
+        while (time.time() - start_time) < DUMMY_NAV_TIME:
             self.get_logger().info("Publishing feedback...")
 
             # Fill feedback with dummy data
