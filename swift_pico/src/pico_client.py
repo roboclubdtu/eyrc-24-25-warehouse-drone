@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 # WD_4122
 
-import time
-from enum import Enum
 import rclpy
-from rclpy.action import ActionClient
+import rclpy.guard_condition
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.action import ActionClient
+
+from utils import State
 
 from waypoint_navigation.action import NavToWaypoint
 from waypoint_navigation.srv import GetWaypoints
 
-TIMER_INTERVAL_S = 0.5
-
-class State(Enum):
-    IDLE = 0
-    GETTING_PATH = 1
-    NAVIGATING = 2
-
+TIMER_INTERVAL_S = 1.0
 
 class WayPointClient(Node):
 
@@ -30,19 +27,26 @@ class WayPointClient(Node):
         self.get_logger().info(f"{self.get_name()} node has been started.")
     
     def ros_interfaces_init(self):
-        #create an action client for the action 'NavToWaypoint'. Refer to Writing an action server and client (Python) in ROS 2 tutorials
-        #action name should 'waypoint_navigation'.
-
+        # srv_cb_group = MutuallyExclusiveCallbackGroup()
+        srv_cb_group = ReentrantCallbackGroup()
+        # main_cb_group = MutuallyExclusiveCallbackGroup() # default callback group
+        main_cb_group = None # default callback group
         
         #create a client for the service 'GetWaypoints'. Refer to Writing a simple service and client (Python) in ROS 2 tutorials
         #service name should be 'waypoints'
-        self.get_waypoints_client = self.create_client(GetWaypoints, 'GetWaypoints')
+        self.get_waypoints_client = self.create_client(GetWaypoints, 'GetWaypoints', callback_group=srv_cb_group)
 
-        self.main_timer = self.create_timer(TIMER_INTERVAL_S, self.main_timer_callback)
+        #create an action client for the action 'NavToWaypoint'. Refer to Writing an action server and client (Python) in ROS 2 tutorials
+        #action name should 'waypoint_navigation'.
+
+
+        self.main_timer = self.create_timer(TIMER_INTERVAL_S, self.main_timer_callback, callback_group=main_cb_group)
 
     ### State machine functions
 
     def main_timer_callback(self):
+        self.get_logger().info(f'State: {self.state}')
+        
         state_fn = {
             State.IDLE: self.idle_state,
             State.GETTING_PATH: self.getting_path_state,
@@ -57,18 +61,47 @@ class WayPointClient(Node):
             self.get_logger().warn('Service not available')
             return
         
+        self.get_logger().info(f"'{self.get_waypoints_client.srv_name}' service available")
         self.change_state(State.GETTING_PATH)
 
     def getting_path_state(self):
-        pass
+        if not self.goals:
+            self.fetch_waypoints()
+        
+        self.change_state(State.NAVIGATING)
 
     def navigating_state(self):
+        self.get_logger().info('Navigation started')
         pass
 
     def change_state(self, state: State):
         self.get_logger().info(f'State changed from {self.state} to {state}')
         self.state = state
     
+
+    ### service client functions
+    def send_request(self):
+        try:
+            request = GetWaypoints.Request()
+            request.get_waypoints = True
+            future = self.get_waypoints_client.call_async(request)
+            future
+        finally:
+            return future
+    
+    def fetch_waypoints(self):
+        self.get_logger().info('Fetching waypoints')
+        # future = self.send_request()
+        request = GetWaypoints.Request()
+        request.get_waypoints = True
+        future = self.get_waypoints_client.call_async(request)
+
+        rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
+        result = future.result()
+        self.get_logger().info('Waypoints received')
+        self.get_logger().info(f'response: {result}')
+
+
     ### action client functions
 
     def send_goal(self, waypoint):
@@ -114,42 +147,21 @@ class WayPointClient(Node):
         self.get_logger().info(f'Received feedback! The current whycon position is: {x}, {y}, {z}')
         self.get_logger().info(f'Max time inside sphere: {t}')
 
-    ### service client functions
-
-    def send_request(self):
-        request = GetWaypoints.Request()
-        future = self.get_waypoints_client.call_async(request)
-        return future
-    
-    def receive_goals(self):
-        future = self.send_request()
-        rclpy.spin_until_future_complete(self, future)
-        
-        response:GetWaypoints.Response = future.result()
-        self.get_logger().info('Waypoints received by the action client')
-
-        for pose in response.waypoints.poses:
-            waypoints = [pose.position.x, pose.position.y, pose.position.z]
-            self.goals.append(waypoints)
-            self.get_logger().info(f'Waypoints: {waypoints}')
-
-        self.send_goal(self.goals[0])
-    
-
 def main(args=None):
     rclpy.init(args=args)
 
-    waypoint_client = WayPointClient()
-    waypoint_client.receive_goals()
+    node = WayPointClient()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+
+    # while rclpy.ok():
+    #     rclpy.spin_once(node, executor=executor)
 
     try:
-        rclpy.spin(waypoint_client)
+        executor.spin()
     except KeyboardInterrupt:
-        waypoint_client.get_logger().info('KeyboardInterrupt, shutting down.\n')
-    finally:
-        waypoint_client.destroy_node()
-        rclpy.shutdown()
-    
+        node.get_logger().info('Keyboard interrupt, shutting down.\n')
+    node.destroy_node()
     rclpy.shutdown()
 
 
