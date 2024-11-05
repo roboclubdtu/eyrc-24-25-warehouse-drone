@@ -22,11 +22,12 @@ class WaypointsServer(Node):
         self.get_logger().info("WaypointsServer node has been started.")
 
     def get_waypoints_callback(self, request:GetWaypoints.Request, response:GetWaypoints.Response):
+        self.get_logger().info("Request received.")
         if request.get_waypoints:
             response.waypoints = self.get_waypoints()
             self.get_logger().info("Waypoints have been successfully sent.")
         else:
-            self.get_logger().info("Request received but 'get_waypoints' flag is False.")
+            self.get_logger().error("Request received but 'get_waypoints' flag is False.")
         return response
 
     def get_waypoints(self):
