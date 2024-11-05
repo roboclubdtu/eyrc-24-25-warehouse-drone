@@ -77,7 +77,7 @@ class PicoControllerNode(Node):
         self.cmd.rc_throttle = 1500
 
         # Initial setting of Kp, Ki, Kd for [roll, pitch, throttle]
-        self.roll_controller = PID()
+        self.roll_controller = PID(offset=1500)
         self.pitch_controller = PID()
         self.throttle_controller = PID(offset=-1528)
 
@@ -185,26 +185,29 @@ class PicoControllerNode(Node):
             D_term = self.Kd[i] * (error[i] - self.prev_error[i]) / self.sample_time
 
             # Step 3: Calculate output
-            output = P_term + I_term + D_term
+            pid_output = P_term + I_term + D_term
             # Step 4: Adjust command value (1550 is base for steady throttle)
             if i == 0:  # Roll
-                self.cmd.rc_roll = int(1500 + output)
+                self.cmd.rc_roll = int(1500 + pid_output)
                 self.cmd.rc_roll = max(min(self.cmd.rc_roll, self.max_values[0]), self.min_values[0])
+                self.get_logger().info(f"X error: {error[i]}, pid output: {pid_output}, rc_roll command: {self.cmd.rc_roll}")
+
             elif i == 1:  # Pitch
-                self.cmd.rc_pitch = int(1500 - output)
+                self.cmd.rc_pitch = int(1500 - pid_output)
                 self.cmd.rc_pitch = max(min(self.cmd.rc_pitch, self.max_values[1]), self.min_values[1])
-            else:  # Throttle (z-axis)
+            # else:  # Throttle (z-axis)
                 # Base of 1550 for maintaining steady position
-                self.cmd.rc_throttle = int(1528 - output)
-                self.cmd.rc_throttle = max(min(self.cmd.rc_throttle, self.max_values[2]), self.min_values[2])
-                self.get_logger().info(f"Current PID gains - Kp: {self.Kp[2]}, Ki: {self.Ki[2]}, Kd: {self.Kd[2]}")
-                self.get_logger().info(f"throttle error: {error[2]}, PID output: {output}, Throttle command: {self.cmd.rc_throttle}")
+                # self.cmd.rc_throttle = int(1528 - pid_output)
+                # self.cmd.rc_throttle = max(min(self.cmd.rc_throttle, self.max_values[2]), self.min_values[2])
+                # self.get_logger().info(f"Current PID gains - Kp: {self.Kp[2]}, Ki: {self.Ki[2]}, Kd: {self.Kd[2]}")
+                # self.get_logger().info(f"Altitude error: {error[2]}, PID output: {pid_output}, Throttle command: {self.cmd.rc_throttle}")
 
             # Step 7: Update previous error
             self.prev_error[i] = error[i]
 
             # Log the control signal output
             # self.get_logger().info(f"Drone position: {self.drone_position[2]}, throttle error: {error[2]}, Throttle command: {self.cmd.rc_throttle}, Control Signal: {output}")
+            # self.get_logger().info(f"Drone position: {self.drone_position[i]}, throttle error: {error[i]}, Throttle command: {self.cmd.rc_pitch}, Control Signal: {output}")
             
 
         # refactor code 
@@ -216,8 +219,9 @@ class PicoControllerNode(Node):
         rc_pitch_pid_output = int(self.pitch_controller.compute(self.setpoint_pose.position.y, _current_y))
         rc_throttle_pid_output = int(self.throttle_controller.compute(self.setpoint_pose.position.z, _current_z))
 
-        rc_throttle_cmd = rc_throttle_pid_output
-        self.cmd.rc_throttle = rc_throttle_cmd
+        # rc_throttle_cmd = rc_throttle_pid_output
+        self.cmd.rc_roll = rc_roll_pid_output
+        self.cmd.rc_throttle = rc_throttle_pid_output
 
         # /refactor code 
 
@@ -237,7 +241,7 @@ class PicoControllerNode(Node):
 
         # /refactor code
 
-        self.get_logger().info(f"PID throttle error: {self.throttle_controller.error}, PID output: {rc_throttle_pid_output}, rc_roll_cmd: {rc_throttle_cmd}")
+        self.get_logger().info(f"PID X error: {self.roll_controller.error}, PID output: {rc_roll_pid_output}")
 
         self.pid_error_pub.publish(pid_error_msg)
 
