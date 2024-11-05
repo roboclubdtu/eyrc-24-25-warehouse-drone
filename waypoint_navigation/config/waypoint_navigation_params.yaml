@@ -1,8 +1,0 @@
-waypoint_nav_node:
-  ros__parameters:
-    example_param: "abc"
-
-waypoint_nav_py_node:
-  ros__parameters:
-    example_param: "abc"
-
