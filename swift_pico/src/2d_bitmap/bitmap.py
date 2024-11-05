@@ -1,6 +1,10 @@
 import cv2
 import argparse
 import numpy as np
+import os
+
+# Just for local dev with local pictures
+IMAGE_DIR_PATH = os.path.dirname(__file__)
 
 # parser = argparse.ArgumentParser()
 # parser.add_argument("--image", type=str)
@@ -29,7 +33,9 @@ ARUCO_DICT = {
     "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11,
 }
 
-PADDING_BORDER_SIZE = 10
+PADDING_BORDER_SIZE = 100
+MIN_CONTOUR_AREA = 50
+CLEAN_KERNEL_SIZE = 10
 
 
 def get_center_coordinates_from_rect(list_of_coordinates):
@@ -119,6 +125,16 @@ def apply_warp_perspective(image, marker_coordinates, resize_size=1000):
     return wp_image
 
 
+def clean_image_from_contours(image, contours, min_contour_area):
+    # Find small rectangles (leftover corners of Aruco markers)
+    cleaned_image = image.copy()
+    for cnt in contours:
+        if cv2.contourArea(cnt) < min_contour_area:
+            x, y, w, h = cv2.boundingRect(cnt)
+            cv2.rectangle(cleaned_image, (x, y), (x + w, y + h), (255, 255, 255), -1)
+    return cleaned_image
+
+
 def treshold_and_find_contours(image, min_contour_area):
     padded_image = cv2.copyMakeBorder(
         cv2.cvtColor(image, cv2.COLOR_BGR2GRAY),
@@ -129,59 +145,60 @@ def treshold_and_find_contours(image, min_contour_area):
         cv2.BORDER_CONSTANT,
         value=(255, 255, 255),
     )
-    _, thresh = cv2.threshold(padded_image, 127, 255, cv2.THRESH_BINARY, image)
+    _, padded_thresh = cv2.threshold(padded_image, 127, 255, cv2.THRESH_BINARY, image)
 
-    # Find contours and adjusting them because of the added border
-    all_contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # Find all contours in the padded image
+    all_contours, _ = cv2.findContours(
+        padded_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    # Clean the image
+    cleaned_image = clean_image_from_contours(
+        padded_thresh, all_contours, MIN_CONTOUR_AREA
+    )
+
+    # Adjusting the contours because of the padding
     valid_contours = [
         cnt - [PADDING_BORDER_SIZE, PADDING_BORDER_SIZE] for cnt in all_contours
     ]
 
     # Filter based on area
     max_area = max(cv2.contourArea(cnt) for cnt in valid_contours)
-    return [
-        cnt
-        for cnt in valid_contours
-        if min_contour_area < cv2.contourArea(cnt) < max_area
-    ]
+
+    return (
+        cleaned_image,
+        [
+            cnt
+            for cnt in valid_contours
+            if min_contour_area < cv2.contourArea(cnt) < max_area
+        ],
+    )
 
 
-def scale_contours(contours, inflation_factor):
-    
-    for contour in contours:
-        
-        # Create a convex hull
-        hull = cv2.convexHull(contour)
-        
-        # Calculate the center of the contour
-        M = cv2.moments(hull)
-        cx = int(M["m10"] / M["m00"])
-        cy = int(M["m01"] / M["m00"])
+def scale_contours(binary_image):
 
-        # Inflate the contour points by moving them outward from the center
-        scaled_hull = []
-        for point in hull:
-            x, y = point[0]
+    binary_image_with_offsets = binary_image.copy()
 
-            # Calculate the vector from the center to the point
-            vector_x = x - cx
-            vector_y = y - cy
+    distance = cv2.distanceTransform(binary_image, cv2.DIST_L2, 5)
 
-            new_x = int(cx + inflation_factor * vector_x)
-            new_y = int(cy + inflation_factor * vector_y)
-            scaled_hull.append([[new_x, new_y]])
+    _, offset_thresh = cv2.threshold(distance, 0.05 * distance.max(), 255, 0)
 
-        # Convert to NumPy array format
-    return np.array(scaled_hull, dtype=np.int32)
+    offset_thresh = np.uint8(offset_thresh)
+
+    offset_contours, _ = cv2.findContours(
+        offset_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    cv2.drawContours(binary_image_with_offsets, offset_contours, -1, (0, 0, 255), 2)
+
+    return binary_image_with_offsets
 
 
 # # Extract the argument
 # args = parser.parse_args()
 
 # Loading the image from arguments
-bgr_image = cv2.imread(
-    "ws/dtu_ws/src/wd_task_2b_bitmap/test_bitmap.png", cv2.IMREAD_COLOR
-)
+bgr_image = cv2.imread(IMAGE_DIR_PATH + "/test_bitmap.png", cv2.IMREAD_COLOR)
 rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
 
 # # Processing Aruco markers
@@ -192,30 +209,9 @@ rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
 
 # Thresholding the image and find contours
 # binary_image = wp_image.copy()
-contours = treshold_and_find_contours(bgr_image, 50)
-scaled_contours = scale_contours(contours, 1.1)
+# contours = treshold_and_find_contours(bgr_image, 50)
 
-cv2.drawContours(rgb_image, [scaled_contours], -1, (0, 255, 0), 2)
+cleaned_image, contours = treshold_and_find_contours(bgr_image, MIN_CONTOUR_AREA)
+scaled_contours = scale_contours(cleaned_image)
 
-# for contour in contours:
-#     # Get the bounding rectangle for each contour
-
-#     x, y, w, h = cv2.boundingRect(contour)
-
-#     # Draw the rectangle around the contour
-#     cv2.rectangle(rgb_image, (x, y), (x + w, y + h), (0, 0, 255), 2)
-
-cv2.imwrite("ws/dtu_ws/src/wd_task_2b_bitmap/output.jpg", rgb_image)
-
-
-# lines_to_write = []
-# lines_to_write.append("Aruco ID: {}\n".format(aruco_ids.flatten().tolist()))
-# lines_to_write.append("Obstacles: {}\n".format(len(obstacle_areas)))
-# lines_to_write.append("Area: {}".format(sum(obstacle_areas)))
-
-
-# f = open("obstacles.txt", "w")
-# f.writelines(lines_to_write)
-# f.close()
-
-# cv2.imwrite("output.jpg", binary_image)
+cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", scaled_contours)
