@@ -1,5 +1,9 @@
 
+from rclpy.time import Time
+
+from geometry_msgs.msg import Pose, PoseStamped
 from enum import Enum
+
 
 class PID:
     def __init__(self, sample_time, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2000.0, min_output=1000.0, offset=0.0):
@@ -49,3 +53,9 @@ class State(Enum):
     GETTING_PATH = 1
     NAVIGATING = 2
     DONE = 3
+
+def timestamp_pose(pose:Pose, stamp: Time):
+    pose_stamped = PoseStamped()
+    pose_stamped.pose = pose
+    pose_stamped.header.stamp = stamp.to_msg()
+    return pose

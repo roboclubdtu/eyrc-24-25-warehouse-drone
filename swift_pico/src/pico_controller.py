@@ -3,20 +3,33 @@
 
 # Importing the required libraries
 
-from swift_msgs.msg import SwiftMsgs
-from geometry_msgs.msg import PoseArray, Pose
-from pid_msg.msg import PIDTune, PIDError
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionServer
 
-from pico_utils import PID
+from swift_msgs.msg import SwiftMsgs
+from geometry_msgs.msg import PoseArray, Pose, PoseStamped
+from pid_msg.msg import PIDError
+
+from waypoint_navigation.action import NavToWaypoint
+from pico_utils import PID, timestamp_pose
+import time
 
 SAMPLE_TIME_S = 0.060 # QUESTION: When running `ros2 topic hz /whycon/poses` the rate is 30 Hz. That means a period of 0.0333 seconds. Why is the sample time set to 0.060 seconds?
+
 PID_VALS = {
     'roll': {'P': 10.0, 'I': 0.0, 'D': 35.0},
     'pitch': {'P': 10.0, 'I': 0.0, 'D': 35.0},
     'throttle': {'P': 18.0, 'I': 0.0, 'D': 36.0}
 }
+def get_dummy_pose():
+    pose = Pose()
+    pose.position.x = 2.0
+    pose.position.y = 2.0
+    pose.position.z = 19.0
+    return pose
+
+DUMMY_NAV_TIME = 5
 
 class PicoControllerNode(Node):
     def __init__(self):
@@ -24,8 +37,7 @@ class PicoControllerNode(Node):
         self.ros_interfaces_init()
         self.pid_init()
 
-        self.drone_position = [0.0, 0.0, 0.0]
-
+        self.arm()
 
         self.get_logger().info(f"{self.get_name()} initialized")
     
@@ -34,9 +46,8 @@ class PicoControllerNode(Node):
         pass
 
     def ros_interfaces_init(self):
-        # goal pose
-        self.setpoint_pose = Pose()
-        self.set_goalpose(2.0,2.0,19.0)
+        self.current_pose:Pose = None
+        self.setpoint_pose = None
         
         # Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = SwiftMsgs()
@@ -48,8 +59,12 @@ class PicoControllerNode(Node):
         # Subscribing to /whycon/poses, /throttle_pid, /pitch_pid, /roll_pid
         self.create_subscription(PoseArray, '/whycon/poses', self.whycon_callback, 1)
 
-        # Arming the drone
-        self.arm()
+        self._action_server = ActionServer(
+            self,
+            NavToWaypoint,
+            'waypoint_navigation',
+            self.nav_action_callback
+        )
 
         # Creating a timer to run the pid function periodically
         self.create_timer(SAMPLE_TIME_S, self.pid)
@@ -73,6 +88,8 @@ class PicoControllerNode(Node):
         self.cmd.rc_aux4 = 1000
         self.command_pub.publish(self.cmd)
 
+        self.get_logger().info("Drone disarmed")
+
     def arm(self):
         self.disarm()
         self.cmd.rc_roll = 1500
@@ -80,25 +97,25 @@ class PicoControllerNode(Node):
         self.cmd.rc_pitch = 1500
         self.cmd.rc_throttle = 1500
         self.cmd.rc_aux4 = 2000
-        self.command_pub.publish(self.cmd)  # Publishing /drone_command
+        self.command_pub.publish(self.cmd)
+
+        self.get_logger().info("Drone armed")
 
     def pid(self):
         # Skip PID calculation until valid position data is available
-        if self.drone_position == [0.0, 0.0, 0.0]:
-            return           
+        if self.current_pose is None or self.setpoint_pose is None:
+            return
 
         # refactor code 
-        _current_x = self.drone_position[0]
-        _current_y = self.drone_position[1]
-        _current_z = self.drone_position[2]
+        _current_x = self.current_pose.position.x
+        _current_y = self.current_pose.position.y
+        _current_z = self.current_pose.position.z
 
         self.cmd.rc_roll =  int(self.roll_controller.compute(self.setpoint_pose.position.x, _current_x))
         self.cmd.rc_pitch =  int(self.pitch_controller.compute(self.setpoint_pose.position.y, _current_y))
         self.cmd.rc_throttle =  int(self.throttle_controller.compute(self.setpoint_pose.position.z, _current_z))
         # /refactor code 
 
-        # constant yaw val
-        self.cmd.rc_yaw = 1500
         self.command_pub.publish(self.cmd)
 
         # Publish error values
@@ -113,20 +130,37 @@ class PicoControllerNode(Node):
         self.pid_error_pub.publish(pid_error_msg)
 
     # Callback functions
-    def whycon_callback(self, msg):
-        self.drone_position[0] = msg.poses[0].position.x
-        self.drone_position[1] = msg.poses[0].position.y
-        self.drone_position[2] = msg.poses[0].position.z
-
+    def whycon_callback(self, msg:PoseArray):
+        self.current_pose = msg.poses[0]
 
     # action functions
-    def set_goalpose(self, x,y,z):
-        self.setpoint_pose.position.x = x
-        self.setpoint_pose.position.y = y
-        self.setpoint_pose.position.z = z
+    def set_goalpose(self, pose:Pose):
+        self.setpoint_pose = pose
 
-        self.get_logger().warn(f"Goal pose set to: {x}, {y}, {z}")
+        self.get_logger().warn(f"Goal pose set to: {pose.position.x}, {pose.position.y}, {pose.position.z}")
 
+    def nav_action_callback(self, goal_handle):
+        self.get_logger().info("Received a goal request.")
+        result = NavToWaypoint.Result()
+
+        # Dummy navigation, input process
+        self.get_logger().info(f"Navigating to {goal_handle.request.waypoint}")
+        self.set_goalpose(goal_handle.request.waypoint)
+
+        # Dummy feedback
+        feedback_msg = NavToWaypoint.Feedback()
+        feedback_msg.current_waypoint = timestamp_pose(self.current_pose, self.get_clock().now())
+        
+        start_time = time.time()
+
+        # Publish feedback every 0.5 seconds, for 3 seconds
+        while (time.time() - start_time) < DUMMY_NAV_TIME:
+            self.get_logger().info("Publishing feedback...")
+            goal_handle.publish_feedback(feedback_msg)
+            time.sleep(0.5)
+
+        # Return the result
+        result.hov_time = 3
 
 def main(args=None):
     rclpy.init(args=args)
