@@ -78,7 +78,7 @@ class PicoControllerNode(Node):
 
         # Initial setting of Kp, Ki, Kd for [roll, pitch, throttle]
         self.roll_controller = PID(offset=1500)
-        self.pitch_controller = PID()
+        self.pitch_controller = PID(offset=-1500)
         self.throttle_controller = PID(offset=-1528)
 
         XY_P = 10
@@ -140,26 +140,21 @@ class PicoControllerNode(Node):
         self.cmd.rc_aux4 = 2000
         self.command_pub.publish(self.cmd)  # Publishing /drone_command
 
-    # Whycon callback function
-    # The function gets executed each time when /whycon node publishes /whycon/poses
     def whycon_callback(self, msg):
         self.drone_position[0] = msg.poses[0].position.x
         self.drone_position[1] = msg.poses[0].position.y
         self.drone_position[2] = msg.poses[0].position.z
 
-    # Callback function for /throttle_pid
     def altitude_set_pid(self, alt):
         self.Kp[2] = alt.kp
         self.Ki[2] = alt.ki
         self.Kd[2] = alt.kd
 
-    # Callback function for /pitch_pid
     def pitch_set_pid(self, pitch):
         self.Kp[1] = pitch.kp
         self.Ki[1] = pitch.ki
         self.Kd[1] = pitch.kd
 
-    # Callback function for /roll_pid
     def roll_set_pid(self, roll):
         self.Kp[0] = roll.kp 
         self.Ki[0] = roll.ki 
@@ -169,79 +164,28 @@ class PicoControllerNode(Node):
     def pid(self):
         # Skip PID calculation until valid position data is available
         if self.drone_position == [0.0, 0.0, 0.0]:
-            return
-        # Step 1: Compute error in each axis [roll (x), pitch (y), throttle (z)]
-        error = [self.setpoint[i] - self.drone_position[i] for i in range(3)]
-
-        self.get_logger().info(f"height setpoint: {self.setpoint[2]}")
-        self.get_logger().info(f"Drone position: {self.drone_position[2]}")
-        self.get_logger().info(f"throttle error: {error[2]}")
-
-        # Step 2: Compute P, I, and D terms
-        for i in range(3):
-            P_term = self.Kp[i] * error[i]
-            self.error_sum[i] += error[i] * self.sample_time
-            I_term = self.Ki[i] * self.error_sum[i]
-            D_term = self.Kd[i] * (error[i] - self.prev_error[i]) / self.sample_time
-
-            # Step 3: Calculate output
-            pid_output = P_term + I_term + D_term
-            # Step 4: Adjust command value (1550 is base for steady throttle)
-            if i == 0:  # Roll
-                self.cmd.rc_roll = int(1500 + pid_output)
-                self.cmd.rc_roll = max(min(self.cmd.rc_roll, self.max_values[0]), self.min_values[0])
-                self.get_logger().info(f"X error: {error[i]}, pid output: {pid_output}, rc_roll command: {self.cmd.rc_roll}")
-
-            elif i == 1:  # Pitch
-                self.cmd.rc_pitch = int(1500 - pid_output)
-                self.cmd.rc_pitch = max(min(self.cmd.rc_pitch, self.max_values[1]), self.min_values[1])
-            # else:  # Throttle (z-axis)
-                # Base of 1550 for maintaining steady position
-                # self.cmd.rc_throttle = int(1528 - pid_output)
-                # self.cmd.rc_throttle = max(min(self.cmd.rc_throttle, self.max_values[2]), self.min_values[2])
-                # self.get_logger().info(f"Current PID gains - Kp: {self.Kp[2]}, Ki: {self.Ki[2]}, Kd: {self.Kd[2]}")
-                # self.get_logger().info(f"Altitude error: {error[2]}, PID output: {pid_output}, Throttle command: {self.cmd.rc_throttle}")
-
-            # Step 7: Update previous error
-            self.prev_error[i] = error[i]
-
-            # Log the control signal output
-            # self.get_logger().info(f"Drone position: {self.drone_position[2]}, throttle error: {error[2]}, Throttle command: {self.cmd.rc_throttle}, Control Signal: {output}")
-            # self.get_logger().info(f"Drone position: {self.drone_position[i]}, throttle error: {error[i]}, Throttle command: {self.cmd.rc_pitch}, Control Signal: {output}")
-            
+            return           
 
         # refactor code 
         _current_x = self.drone_position[0]
         _current_y = self.drone_position[1]
         _current_z = self.drone_position[2]
 
-        rc_roll_pid_output = int(self.roll_controller.compute(self.setpoint_pose.position.x, _current_x))
-        rc_pitch_pid_output = int(self.pitch_controller.compute(self.setpoint_pose.position.y, _current_y))
-        rc_throttle_pid_output = int(self.throttle_controller.compute(self.setpoint_pose.position.z, _current_z))
-
-        # rc_throttle_cmd = rc_throttle_pid_output
-        self.cmd.rc_roll = rc_roll_pid_output
-        self.cmd.rc_throttle = rc_throttle_pid_output
-
+        self.cmd.rc_roll =  int(self.roll_controller.compute(self.setpoint_pose.position.x, _current_x))
+        self.cmd.rc_pitch =  int(self.pitch_controller.compute(self.setpoint_pose.position.y, _current_y))
+        self.cmd.rc_throttle =  int(self.throttle_controller.compute(self.setpoint_pose.position.z, _current_z))
         # /refactor code 
 
-        # Step 6: Publish command after all adjustments
         self.command_pub.publish(self.cmd)
 
-        # Step 8: Publish error values
-        pid_error_msg = PIDError()
-        pid_error_msg.roll_error = error[0]
-        pid_error_msg.pitch_error = error[1]
-        pid_error_msg.throttle_error = error[2]
-
+        # Publish error values
         # refactor code
+        pid_error_msg = PIDError()
+
         pid_error_msg.roll_error = self.roll_controller.error
         pid_error_msg.pitch_error = self.pitch_controller.error
         pid_error_msg.throttle_error = self.throttle_controller.error
-
         # /refactor code
-
-        self.get_logger().info(f"PID X error: {self.roll_controller.error}, PID output: {rc_roll_pid_output}")
 
         self.pid_error_pub.publish(pid_error_msg)
 
