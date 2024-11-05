@@ -36,7 +36,7 @@ class PicoControllerNode(Node):
     def ros_interfaces_init(self):
         # goal pose
         self.setpoint_pose = Pose()
-        self.set_goalpose(2,2,19)
+        self.set_goalpose(2.0,2.0,19.0)
         
         # Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = SwiftMsgs()
@@ -47,9 +47,6 @@ class PicoControllerNode(Node):
 
         # Subscribing to /whycon/poses, /throttle_pid, /pitch_pid, /roll_pid
         self.create_subscription(PoseArray, '/whycon/poses', self.whycon_callback, 1)
-        self.create_subscription(PIDTune, "/throttle_pid", self.altitude_set_pid, 1)
-        self.create_subscription(PIDTune, "/pitch_pid", self.pitch_set_pid, 1)
-        self.create_subscription(PIDTune, "/roll_pid", self.roll_set_pid, 1)
 
         # Arming the drone
         self.arm()
@@ -121,20 +118,6 @@ class PicoControllerNode(Node):
         self.drone_position[1] = msg.poses[0].position.y
         self.drone_position[2] = msg.poses[0].position.z
 
-    def altitude_set_pid(self, alt):
-        self.Kp[2] = alt.kp
-        self.Ki[2] = alt.ki
-        self.Kd[2] = alt.kd
-
-    def pitch_set_pid(self, pitch):
-        self.Kp[1] = pitch.kp
-        self.Ki[1] = pitch.ki
-        self.Kd[1] = pitch.kd
-
-    def roll_set_pid(self, roll):
-        self.Kp[0] = roll.kp 
-        self.Ki[0] = roll.ki 
-        self.Kd[0] = roll.kd
 
     # action functions
     def set_goalpose(self, x,y,z):
