@@ -164,6 +164,8 @@ def treshold_and_find_contours(image, min_contour_area):
 
     # Filter based on area
     max_area = max(cv2.contourArea(cnt) for cnt in valid_contours)
+    
+    cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", padded_thresh)
 
     return (
         cleaned_image,
@@ -194,24 +196,26 @@ def scale_contours(binary_image):
     return binary_image_with_offsets
 
 
-# # Extract the argument
-# args = parser.parse_args()
 
-# Loading the image from arguments
-bgr_image = cv2.imread(IMAGE_DIR_PATH + "/test_bitmap.png", cv2.IMREAD_COLOR)
-rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
 
-# # Processing Aruco markers
-# marker_coordinates, aruco_ids = process_aruco(image)
+# # # Extract the argument
+# # args = parser.parse_args()
 
-# # Applying warp-perspective
-# wp_image = apply_warp_perspective(marker_coordinates, 1000)
+# # Loading the image from arguments
+# bgr_image = cv2.imread(IMAGE_DIR_PATH + "/test_bitmap.png", cv2.IMREAD_COLOR)
+# rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
 
-# Thresholding the image and find contours
-# binary_image = wp_image.copy()
-# contours = treshold_and_find_contours(bgr_image, 50)
+# # # Processing Aruco markers
+# # marker_coordinates, aruco_ids = process_aruco(image)
 
-cleaned_image, contours = treshold_and_find_contours(bgr_image, MIN_CONTOUR_AREA)
-scaled_contours = scale_contours(cleaned_image)
+# # # Applying warp-perspective
+# # wp_image = apply_warp_perspective(marker_coordinates, 1000)
 
-cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", scaled_contours)
+# # Thresholding the image and find contours
+# # binary_image = wp_image.copy()
+# # contours = treshold_and_find_contours(bgr_image, 50)
+
+# cleaned_image, contours = treshold_and_find_contours(bgr_image, MIN_CONTOUR_AREA)
+# scaled_contours = scale_contours(cleaned_image)
+
+# cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", scaled_contours)

@@ -131,6 +131,7 @@ install(PROGRAMS
   src/pico_client_2c.py
   src/pico_server_2c.py
   src/warehouse_service.py
+  src/bitmap_generator.py
 
   # test nodes
   src/nav_to_waypoint_test_server.py
