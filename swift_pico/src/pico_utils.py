@@ -50,13 +50,14 @@ class PID:
 
 class ClientStates(Enum):
     IDLE = auto()
-    GETTING_PATH = auto()
     NAVIGATING = auto()
     DONE = auto()
+    GETTING_PATH = auto()
 
 class ServerStates(Enum):
     IDLE = auto()
     NAVIGATING = auto()
+    HOVER = auto()
     DONE = auto()
 
 def timestamp_pose(pose:Pose, stamp: Time):
@@ -64,3 +65,6 @@ def timestamp_pose(pose:Pose, stamp: Time):
     pose_stamped.pose = pose
     pose_stamped.header.stamp = stamp.to_msg()
     return pose
+
+def coords_from_pose(pose:Pose):
+    return (pose.position.x, pose.position.y, pose.position.z)
