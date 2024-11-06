@@ -29,9 +29,9 @@ ARUCO_DICT = {
     "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11,
 }
 
-PADDING_BORDER_SIZE = 100
-MIN_CONTOUR_AREA = 50
-CLEAN_KERNEL_SIZE = 10
+# PADDING_BORDER_SIZE = 100
+# MIN_CONTOUR_AREA = 50
+CLEAN_ARUCO_PADDING_SIZE = 5
 
 
 def get_center_coordinates_from_rect(list_of_coordinates):
@@ -53,12 +53,15 @@ def get_array_transform_values(list_of_coordinates, center_coordinates):
 
     return (array_shift_value, indices)
 
-# Need OpenCV 4.10.0 and NumPy 2.1.1
+
+# Needs OpenCV 4.10.0 and NumPy 2.1.1
 def process_aruco(image):
 
     # Load the ArUCo dictionary, grab the ArUCo parameters, and
     # attempt to detect the markers for the current dictionary
-    arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100) # TODO: make it more robust
+    arucoDict = cv2.aruco.getPredefinedDictionary(
+        cv2.aruco.DICT_4X4_100
+    )  # TODO: make it more robust
     arucoParams = cv2.aruco.DetectorParameters()
     detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)
 
@@ -121,13 +124,12 @@ def apply_warp_perspective(image, marker_coordinates, resize_size=1000):
     return wp_image
 
 
-def clean_image_from_contours(image, contours, min_contour_area):
-    # Find small rectangles (leftover corners of Aruco markers)
+def clean_image_from_aruco(image, aruco_marker_coordinates):
     cleaned_image = image.copy()
-    for cnt in contours:
-        if cv2.contourArea(cnt) < min_contour_area:
-            x, y, w, h = cv2.boundingRect(cnt)
-            cv2.rectangle(cleaned_image, (x, y), (x + w, y + h), (255, 255, 255), -1)
+    for marker in aruco_marker_coordinates:
+        pt_A = marker[0].astype(int) - CLEAN_ARUCO_PADDING_SIZE  # top-left
+        pt_C = marker[2].astype(int) + CLEAN_ARUCO_PADDING_SIZE  # bottom-right
+        cv2.rectangle(cleaned_image, pt_A, pt_C, (255, 255, 255), thickness=-1)
     return cleaned_image
 
 
@@ -204,8 +206,10 @@ gray_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
 # Processing Aruco markers
 marker_coordinates, aruco_ids = process_aruco(gray_image)
 
+cleaned_image = clean_image_from_aruco(gray_image, marker_coordinates)
+
 # Applying warp-perspective
-wp_image = apply_warp_perspective(gray_image, marker_coordinates, 1000)
+wp_image = apply_warp_perspective(cleaned_image, marker_coordinates, 1000)
 
 cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", wp_image)
 
