@@ -133,64 +133,30 @@ def clean_image_from_aruco(image, aruco_marker_coordinates):
     return cleaned_image
 
 
-def treshold_and_find_contours(image, min_contour_area):
-    padded_image = cv2.copyMakeBorder(
-        cv2.cvtColor(image, cv2.COLOR_BGR2GRAY),
-        PADDING_BORDER_SIZE,
-        PADDING_BORDER_SIZE,
-        PADDING_BORDER_SIZE,
-        PADDING_BORDER_SIZE,
-        cv2.BORDER_CONSTANT,
-        value=(255, 255, 255),
-    )
-    _, padded_thresh = cv2.threshold(padded_image, 127, 255, cv2.THRESH_BINARY, image)
+def treshold_and_find_contours(image):
+    _, tresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY, image)
 
     # Find all contours in the padded image
-    all_contours, _ = cv2.findContours(
-        padded_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-    )
+    contours, _ = cv2.findContours(tresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Clean the image
-    cleaned_image = clean_image_from_contours(
-        padded_thresh, all_contours, MIN_CONTOUR_AREA
-    )
-
-    # Adjusting the contours because of the padding
-    valid_contours = [
-        cnt - [PADDING_BORDER_SIZE, PADDING_BORDER_SIZE] for cnt in all_contours
-    ]
-
-    # Filter based on area
-    max_area = max(cv2.contourArea(cnt) for cnt in valid_contours)
-
-    cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", padded_thresh)
+    # Find the biggest contour area which is the image itself
+    max_area = max([cv2.contourArea(cnt) for cnt in contours])
 
     return (
-        cleaned_image,
-        [
-            cnt
-            for cnt in valid_contours
-            if min_contour_area < cv2.contourArea(cnt) < max_area
-        ],
+        tresh,
+        [cnt for cnt in contours if cv2.contourArea(cnt) < max_area],
     )
 
 
 def scale_contours(binary_image):
-
     binary_image_with_offsets = binary_image.copy()
-
     distance = cv2.distanceTransform(binary_image, cv2.DIST_L2, 5)
-
     _, offset_thresh = cv2.threshold(distance, 0.05 * distance.max(), 255, 0)
-
     offset_thresh = np.uint8(offset_thresh)
-
     offset_contours, _ = cv2.findContours(
         offset_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
-
     cv2.drawContours(binary_image_with_offsets, offset_contours, -1, (0, 0, 255), 2)
-
     return binary_image_with_offsets
 
 
@@ -211,7 +177,9 @@ cleaned_image = clean_image_from_aruco(gray_image, marker_coordinates)
 # Applying warp-perspective
 wp_image = apply_warp_perspective(cleaned_image, marker_coordinates, 1000)
 
-cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", wp_image)
+tresh, contours = treshold_and_find_contours(wp_image)
+
+cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", tresh)
 
 # # Thresholding the image and find contours
 # # binary_image = wp_image.copy()
