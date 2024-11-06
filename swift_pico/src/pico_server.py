@@ -37,7 +37,7 @@ def get_dummy_pose():
     pose.position.z = 19.0
     return pose
 
-DUMMY_NAV_TIME = 5
+HOVER_TIME_S = 3
 
 class PicoServerNode(Node):
     def __init__(self):
@@ -74,9 +74,11 @@ class PicoServerNode(Node):
         self.create_timer(1.0, self.publish_diagnostics, callback_group=main_callback_group)
 
         # Action stuff
+        self.action_completed:bool = False
         self.goal_pose:Pose = None
         self.goalpose_arrived:bool = False
-        self.nav_start_time = 0.0
+        self.hover_start_time = None
+        self.hover_total_time = 0
 
         self._action_server = ActionServer(
             self,
@@ -88,7 +90,7 @@ class PicoServerNode(Node):
         )
 
         # Creating a timer to run the pid function periodically
-        self.create_timer(SAMPLE_TIME_S, self.pid, callback_group=main_callback_group)
+        self.create_timer(SAMPLE_TIME_S, self.main, callback_group=main_callback_group)
 
     def change_state(self, new_state:ServerStates):
         self.state = new_state
@@ -126,19 +128,44 @@ class PicoServerNode(Node):
 
         self.get_logger().info("Drone armed")
 
+    def main(self):
+        state_fns = {
+            ServerStates.IDLE: self.idle,
+            ServerStates.NAVIGATING: self.navigate,
+            ServerStates.HOVER: self.hover
+        }
+
+        state_fns[self.state]()
+
+        self.pid() # maybe add it to its own thread?
+
+    def idle(self):
+        if self.goal_pose is not None:
+            self.change_state(ServerStates.NAVIGATING)
+            return
+
+    def navigate(self):
+        if self.goal_reached():
+            self.goalpose_arrived = True
+            self.get_logger().info("Goal pose reached")
+            self.change_state(ServerStates.HOVER)
+
     def hover(self):
-        self.cmd.rc_roll = 1500
-        self.cmd.rc_pitch = 1500
-        self.cmd.rc_throttle = 1540
-        self.command_pub.publish(self.cmd)
+        # Only if the action has started we care about hover time, if not, we simply hover
+        if self.action_started:
+            if self.hover_start_time is None:
+                self.hover_start_time = time.time()
+                self.get_logger().info(f"hover start time {self.hover_start_time}")
+            
+            self.hover_total_time = time.time() - self.hover_start_time
+            if self.hover_total_time > HOVER_TIME_S:
+                self.get_logger().info("Hover time reached. Action completed.")
+                self.action_completed = True
+                self.hover_start_time = None
 
     def pid(self):
         # Skip PID calculation until valid position data is available
-        if self.current_pose is None or self.goal_pose is None:
-            return
-
-        if self.state == ServerStates.HOVER:
-            self.hover()
+        if self.state == ServerStates.IDLE:
             return
 
         # refactor code 
@@ -161,11 +188,6 @@ class PicoServerNode(Node):
         pid_error_msg.pitch_error = self.pitch_controller.error
         pid_error_msg.throttle_error = self.throttle_controller.error
         # /refactor code
-
-        if self.goal_reached():
-            self.goalpose_arrived = True
-            self.get_logger().info("Goal reached")
-            self.change_state(ServerStates.HOVER)
 
         self.pid_error_pub.publish(pid_error_msg)
 
@@ -204,8 +226,6 @@ class PicoServerNode(Node):
         self.goalpose_arrived = False
         self.get_logger().info(f"Goal pose set to: {pose.position.x}, {pose.position.y}, {pose.position.z}")
 
-        return True
-
     def nav_goal_callback(self, goal_request:NavToWaypoint.Goal):
         msg = f"New goal request. x:{goal_request.waypoint.position.x} y:{goal_request.waypoint} z:{goal_request.waypoint}"
         self.get_logger().warn(f"{msg}")
@@ -216,24 +236,24 @@ class PicoServerNode(Node):
 
         # Dummy navigation, input process
         self.set_goalpose(goal_handle.request.waypoint)
-        self.change_state(ServerStates.NAVIGATING)
-        self.nav_start_time = time.time()
+        self.action_started = True
+        self.action_completed = False
         
         # feedback_msg = NavToWaypoint.Feedback()
         # feedback_msg.current_waypoint = timestamp_pose(self.current_pose, self.get_clock().now())
         
 
         # # Publish feedback every 0.5 seconds, for 3 seconds
-        while not self.goalpose_arrived:
+        while not self.action_completed:
             # goal_handle.publish_feedback(feedback_msg)
             pass
 
         # # Return the result
         result = NavToWaypoint.Result()
-        result.hov_time = int(time.time() - self.nav_start_time)
+        result.hov_time = int(self.hover_total_time)
 
         goal_handle.succeed()
-
+        self.action_started = False
         return result
 
 def main(args=None):
