@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-from bitmap import create_2d_bitmap
+from bitmap import bit_map
 
 
 class ImageSubscriber(Node):
@@ -20,9 +20,10 @@ class ImageSubscriber(Node):
     def image_callback(self, msg):
         if not self.image_received:
             try:
+                self.image_received = True
                 self.get_logger().info("Received an image!")
                 cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-                create_2d_bitmap.save_image(cv_image)
+                bit_map.create_2d_bitmap(cv_image)
 
                 # Clean up
                 self.get_logger().info("Shutting down after receiving one image.")
