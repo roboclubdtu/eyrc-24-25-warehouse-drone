@@ -64,7 +64,7 @@ def timestamp_pose(pose:Pose, stamp: Time):
     pose_stamped = PoseStamped()
     pose_stamped.pose = pose
     pose_stamped.header.stamp = stamp.to_msg()
-    return pose
+    return pose_stamped
 
 def coords_from_pose(pose:Pose):
     return (pose.position.x, pose.position.y, pose.position.z)

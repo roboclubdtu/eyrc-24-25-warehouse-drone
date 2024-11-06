@@ -80,6 +80,8 @@ class PicoServerNode(Node):
         self.hover_start_time = None
         self.hover_total_time = 0
 
+        self.feedback_msg = NavToWaypoint.Feedback()
+
         self._action_server = ActionServer(
             self,
             NavToWaypoint,
@@ -238,15 +240,11 @@ class PicoServerNode(Node):
         self.set_goalpose(goal_handle.request.waypoint)
         self.action_started = True
         self.action_completed = False
-        
-        # feedback_msg = NavToWaypoint.Feedback()
-        # feedback_msg.current_waypoint = timestamp_pose(self.current_pose, self.get_clock().now())
-        
 
-        # # Publish feedback every 0.5 seconds, for 3 seconds
         while not self.action_completed:
-            # goal_handle.publish_feedback(feedback_msg)
-            pass
+            self.feedback_msg.current_waypoint = timestamp_pose(self.current_pose, self.get_clock().now())
+            goal_handle.publish_feedback(self.feedback_msg)
+            time.sleep(4) #
 
         # # Return the result
         result = NavToWaypoint.Result()
