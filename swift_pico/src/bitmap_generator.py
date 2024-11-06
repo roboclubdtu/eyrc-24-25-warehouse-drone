@@ -3,7 +3,6 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-import cv2
 from bitmap import create_2d_bitmap
 
 
@@ -23,7 +22,7 @@ class ImageSubscriber(Node):
             try:
                 self.get_logger().info("Received an image!")
                 cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-                create_2d_bitmap.treshold_and_find_contours(cv_image, 50)
+                create_2d_bitmap.save_image(cv_image)
 
                 # Clean up
                 self.get_logger().info("Shutting down after receiving one image.")

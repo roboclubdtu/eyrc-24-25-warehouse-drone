@@ -1,13 +1,9 @@
 import cv2
-import argparse
 import numpy as np
 import os
 
 # Just for local dev with local pictures
 IMAGE_DIR_PATH = os.path.dirname(__file__)
-
-# parser = argparse.ArgumentParser()
-# parser.add_argument("--image", type=str)
 
 ARUCO_DICT = {
     "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
@@ -57,16 +53,16 @@ def get_array_transform_values(list_of_coordinates, center_coordinates):
 
     return (array_shift_value, indices)
 
-
+# Need OpenCV 4.10.0 and NumPy 2.1.1
 def process_aruco(image):
 
     # Load the ArUCo dictionary, grab the ArUCo parameters, and
     # attempt to detect the markers for the current dictionary
-    arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
+    arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100) # TODO: make it more robust
     arucoParams = cv2.aruco.DetectorParameters()
-    (aruco_corners, aruco_ids, rejected) = cv2.aruco.detectMarkers(
-        image, arucoDict, parameters=arucoParams
-    )
+    detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)
+
+    (aruco_corners, aruco_ids, _) = detector.detectMarkers(image)
 
     # Reordering the aruco markers
     aruco_marker_centers = []
@@ -105,10 +101,10 @@ def apply_warp_perspective(image, marker_coordinates, resize_size=1000):
     bottom_right_marker = marker_coordinates[2]
     bottom_left_marker = marker_coordinates[3]
 
-    pt_A = top_left_marker[2]
-    pt_B = top_right_marker[3]
-    pt_C = bottom_right_marker[0]
-    pt_D = bottom_left_marker[1]
+    pt_A = top_left_marker[0]
+    pt_B = top_right_marker[1]
+    pt_C = bottom_right_marker[2]
+    pt_D = bottom_left_marker[3]
 
     width = int(np.linalg.norm(pt_B - pt_A))
     height = int(np.linalg.norm(pt_D - pt_A))
@@ -164,7 +160,7 @@ def treshold_and_find_contours(image, min_contour_area):
 
     # Filter based on area
     max_area = max(cv2.contourArea(cnt) for cnt in valid_contours)
-    
+
     cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", padded_thresh)
 
     return (
@@ -196,20 +192,22 @@ def scale_contours(binary_image):
     return binary_image_with_offsets
 
 
+def save_image(image):
+    cv2.imwrite(IMAGE_DIR_PATH + "/overhead.jpg", image)
 
 
-# # # Extract the argument
-# # args = parser.parse_args()
+# Local dev test
+bgr_image = cv2.imread(IMAGE_DIR_PATH + "/overhead.jpg", cv2.IMREAD_COLOR)
+rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+gray_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
 
-# # Loading the image from arguments
-# bgr_image = cv2.imread(IMAGE_DIR_PATH + "/test_bitmap.png", cv2.IMREAD_COLOR)
-# rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+# Processing Aruco markers
+marker_coordinates, aruco_ids = process_aruco(gray_image)
 
-# # # Processing Aruco markers
-# # marker_coordinates, aruco_ids = process_aruco(image)
+# Applying warp-perspective
+wp_image = apply_warp_perspective(gray_image, marker_coordinates, 1000)
 
-# # # Applying warp-perspective
-# # wp_image = apply_warp_perspective(marker_coordinates, 1000)
+cv2.imwrite(IMAGE_DIR_PATH + "/output.jpg", wp_image)
 
 # # Thresholding the image and find contours
 # # binary_image = wp_image.copy()
