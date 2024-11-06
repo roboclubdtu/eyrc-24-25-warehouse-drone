@@ -7,7 +7,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.action import ActionClient
 
-from pico_utils import State
+from pico_utils import ClientStates
 
 from waypoint_navigation.action import NavToWaypoint
 from waypoint_navigation.srv import GetWaypoints
@@ -18,7 +18,7 @@ class WayPointClient(Node):
 
     def __init__(self):
         super().__init__('waypoint_client')
-        self.state = State.IDLE
+        self.state = ClientStates.IDLE
         self.goals = []
         self.goal_index = 0
 
@@ -45,9 +45,9 @@ class WayPointClient(Node):
         self.get_logger().info(f'State: {self.state}')
         
         state_fn = {
-            State.IDLE: self.idle_state,
-            State.GETTING_PATH: self.getting_path_state,
-            State.NAVIGATING: self.navigating_state
+            ClientStates.IDLE: self.idle_state,
+            ClientStates.GETTING_PATH: self.getting_path_state,
+            ClientStates.NAVIGATING: self.navigating_state
         }
 
         state_fn[self.state]()
@@ -59,19 +59,19 @@ class WayPointClient(Node):
             return
         
         self.get_logger().info(f"'{self.get_waypoints_client.srv_name}' service available")
-        self.change_state(State.GETTING_PATH)
+        self.change_state(ClientStates.GETTING_PATH)
 
     def getting_path_state(self):
         if not self.goals:
             self.fetch_waypoints()
         
-        self.change_state(State.NAVIGATING)
+        self.change_state(ClientStates.NAVIGATING)
 
     def navigating_state(self):
         self.get_logger().info('Navigation started')
         pass
 
-    def change_state(self, state: State):
+    def change_state(self, state: ClientStates):
         self.get_logger().info(f'State changed from {self.state} to {state}')
         self.state = state
     

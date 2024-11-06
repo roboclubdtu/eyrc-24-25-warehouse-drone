@@ -2,7 +2,7 @@
 from rclpy.time import Time
 
 from geometry_msgs.msg import Pose, PoseStamped
-from enum import Enum
+from enum import Enum, auto
 
 
 class PID:
@@ -48,11 +48,16 @@ class PID:
         self.prev_error = 0
         self.integral = 0
 
-class State(Enum):
-    IDLE = 0
-    GETTING_PATH = 1
-    NAVIGATING = 2
-    DONE = 3
+class ClientStates(Enum):
+    IDLE = auto()
+    GETTING_PATH = auto()
+    NAVIGATING = auto()
+    DONE = auto()
+
+class ServerStates(Enum):
+    IDLE = auto()
+    NAVIGATING = auto()
+    DONE = auto()
 
 def timestamp_pose(pose:Pose, stamp: Time):
     pose_stamped = PoseStamped()

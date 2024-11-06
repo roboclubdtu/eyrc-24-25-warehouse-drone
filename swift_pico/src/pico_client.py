@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseArray, Pose
 
-from pico_utils import State
-
+from pico_utils import ClientStates
 from waypoint_navigation.srv import GetWaypoints
 from waypoint_navigation.action import NavToWaypoint
 
@@ -26,7 +25,7 @@ def DUMMY_POSE():
 class CallbackGroupDemo(Node):
     def __init__(self):
         super().__init__('waypoint_client')
-        self.state = State.IDLE
+        self.state = ClientStates.IDLE
         self.goals:PoseArray = None
         self.current_pose = Pose()
         self.goal_index = 0
@@ -53,10 +52,10 @@ class CallbackGroupDemo(Node):
     def timer_cb(self):
         self.get_logger().debug(f'State: {self.state}')
         state_fn = {
-            State.IDLE: self.idle_state,
-            State.GETTING_PATH: self.getting_path_state,
-            State.NAVIGATING: self.navigating_state,
-            State.DONE: self.shutdown_proc
+            ClientStates.IDLE: self.idle_state,
+            ClientStates.GETTING_PATH: self.getting_path_state,
+            ClientStates.NAVIGATING: self.navigating_state,
+            ClientStates.DONE: self.shutdown_proc
         }
 
         state_fn[self.state]()
@@ -68,17 +67,17 @@ class CallbackGroupDemo(Node):
             return
         
         self.get_logger().info(f"'{self._get_waypoints_client.srv_name}' service available")
-        self.change_state(State.GETTING_PATH)
+        self.change_state(ClientStates.GETTING_PATH)
     
     def getting_path_state(self):
         self.call_get_waypoints()
         if self.goals:
-            self.change_state(State.NAVIGATING)
+            self.change_state(ClientStates.NAVIGATING)
 
     def navigating_state(self):
         if self.goal_index >= len(self.goals.poses):
             self.get_logger().info('Reached end of path')
-            self.change_state(State.DONE)
+            self.change_state(ClientStates.DONE)
             return
         
         if self.executing_action:
@@ -86,7 +85,7 @@ class CallbackGroupDemo(Node):
             return
         self.send_goal()
 
-    def change_state(self, state: State):
+    def change_state(self, state: ClientStates):
         self.get_logger().warn(f'State changed from {self.state} to {state}')
         self.state = state
 
