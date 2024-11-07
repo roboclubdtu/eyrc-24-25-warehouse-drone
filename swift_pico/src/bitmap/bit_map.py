@@ -39,7 +39,7 @@ def get_center_coordinates_from_rect(list_of_coordinates):
 def get_array_transform_values(list_of_coordinates, center_coordinates):
     center_x, center_y = center_coordinates
 
-    rad_angles = [np.atan2(y - center_y, x - center_x) for x, y in list_of_coordinates]
+    rad_angles = [np.arctan2(y - center_y, x - center_x) for x, y in list_of_coordinates]
     deg_angles = [(np.degrees(angle) + 360) % 360 for angle in rad_angles]
 
     # Sort the points based on the angles (in clockwise order)
@@ -52,7 +52,7 @@ def get_array_transform_values(list_of_coordinates, center_coordinates):
     return (array_shift_value, indices)
 
 
-# Needs OpenCV 4.10.0 and NumPy 2.1.1
+# Needs OpenCV 4.10.0
 def process_aruco(image):
 
     # Load the ArUCo dictionary, grab the ArUCo parameters, and
@@ -146,16 +146,6 @@ def clean_contours(contours):
     return [cnt for cnt in contours if cv2.contourArea(cnt) < max_area]
 
 
-# def treshold_and_find_contours(image):
-#     _, tresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY, image)
-
-#     # Find all contours in the padded image
-#     contours, _ = cv2.findContours(tresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-#     contours = clean_contours(contours)
-
-#     return (tresh, contours)
-
-
 def scale_contours(image):
     _, tresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
     distance = cv2.distanceTransform(tresh, cv2.DIST_L2, 5)
@@ -172,7 +162,7 @@ def scale_contours(image):
 
 
 def create_2d_bitmap(image) -> bool:
-    gray_image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Processing Aruco markers
     marker_coordinates, _ = process_aruco(gray_image)
@@ -182,8 +172,6 @@ def create_2d_bitmap(image) -> bool:
     # Applying warp-perspective
     wp_image = apply_warp_perspective(cleaned_image, marker_coordinates, 1000)
 
-    # tresh, contours = treshold_and_find_contours(wp_image)
-
     # Binarise the image, scale and find the contours
     scaled_contours_image = scale_contours(wp_image)
 
@@ -192,6 +180,3 @@ def create_2d_bitmap(image) -> bool:
     cv2.imwrite(FILE_DIR_PATH + "/2D_bit_map.png", scaled_contours_image)
 
     return True
-
-gray_image = cv2.imread(FILE_DIR_PATH + "/2D_bit_map.png", cv2.IMREAD_GRAYSCALE)
-create_2d_bitmap(gray_image)
