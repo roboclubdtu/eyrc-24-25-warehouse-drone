@@ -4,6 +4,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Pose, PoseArray
 from waypoint_navigation.srv import GetPath
 
+from swift_pico.scripts import path_planning
+
 from pico_utils import PREDEFINED_WP_HEIGHT_M, coords_list_to_pose_array
 
 def dummy_path():
