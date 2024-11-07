@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-
-# Made by: Krisfof Muhi
 import cv2
 import numpy as np
 import os
@@ -164,7 +161,7 @@ def scale_contours(image):
     return offset_thresh
 
 
-def create_2d_bitmap(image, save_path=None) -> np.ndarray:
+def create_2d_bitmap(image) -> bool:
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Processing Aruco markers
@@ -180,7 +177,6 @@ def create_2d_bitmap(image, save_path=None) -> np.ndarray:
 
     boolean_obsticales = scaled_contours_image == 0  # TODO: return?
 
-    if save_path:
-        cv2.imwrite(save_path + "/2D_bit_map.png", scaled_contours_image)
+    cv2.imwrite(FILE_DIR_PATH + "/2D_bit_map.png", scaled_contours_image)
 
-    return boolean_obsticales
+    return True
