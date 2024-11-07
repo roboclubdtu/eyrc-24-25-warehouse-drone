@@ -119,7 +119,6 @@ install(TARGETS
 
 #Install scripts
 install(PROGRAMS
-  src/pico_controller.py
   scripts/map.py
   src/pico_client.py
   src/pico_server.py

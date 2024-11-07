@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseArray, Pose
 
-from pico_utils import State
-
+from pico_utils import ClientStates
 from waypoint_navigation.srv import GetWaypoints
 from waypoint_navigation.action import NavToWaypoint
 
-TIMER_INTERVAL_S = 1.0
+TIMER_INTERVAL_S = 0.25
 
 def DUMMY_POSE():
     dummy_pose = Pose()
@@ -26,7 +25,7 @@ def DUMMY_POSE():
 class CallbackGroupDemo(Node):
     def __init__(self):
         super().__init__('waypoint_client')
-        self.state = State.IDLE
+        self.state = ClientStates.IDLE
         self.goals:PoseArray = None
         self.current_pose = Pose()
         self.goal_index = 0
@@ -53,10 +52,10 @@ class CallbackGroupDemo(Node):
     def timer_cb(self):
         self.get_logger().debug(f'State: {self.state}')
         state_fn = {
-            State.IDLE: self.idle_state,
-            State.GETTING_PATH: self.getting_path_state,
-            State.NAVIGATING: self.navigating_state,
-            State.DONE: self.shutdown_proc
+            ClientStates.IDLE: self.idle_state,
+            ClientStates.GETTING_PATH: self.getting_path_state,
+            ClientStates.NAVIGATING: self.navigating_state,
+            ClientStates.DONE: self.shutdown_proc
         }
 
         state_fn[self.state]()
@@ -68,25 +67,25 @@ class CallbackGroupDemo(Node):
             return
         
         self.get_logger().info(f"'{self._get_waypoints_client.srv_name}' service available")
-        self.change_state(State.GETTING_PATH)
+        self.change_state(ClientStates.GETTING_PATH)
     
     def getting_path_state(self):
         self.call_get_waypoints()
         if self.goals:
-            self.change_state(State.NAVIGATING)
+            self.change_state(ClientStates.NAVIGATING)
 
     def navigating_state(self):
         if self.goal_index >= len(self.goals.poses):
             self.get_logger().info('Reached end of path')
-            self.change_state(State.DONE)
+            self.get_logger().info('Task done')
+            self.change_state(ClientStates.DONE)
             return
         
         if self.executing_action:
-            self.get_logger().info(f'Navigating to wp {self.goal_index} of {len(self.goals.poses) - 1}')
             return
         self.send_goal()
 
-    def change_state(self, state: State):
+    def change_state(self, state: ClientStates):
         self.get_logger().warn(f'State changed from {self.state} to {state}')
         self.state = state
 
@@ -102,26 +101,26 @@ class CallbackGroupDemo(Node):
         future:GetWaypoints.Response = self._get_waypoints_client.call(req)
 
         if hasattr(future, 'waypoints') and future.waypoints:
-            self.get_logger().info('Received waypoints')
+            self.get_logger().info(f'Received waypoints. {len(future.waypoints.poses)} waypoints')
             self.goals = future.waypoints
 
     # action fns
     def send_goal(self):
         # inspired from https://foxglove.dev/blog/creating-ros2-actions
         self.get_logger().info('Sending goal...')
+
         goal_msg = NavToWaypoint.Goal()
         goal_msg.waypoint = self.next_waypoint()
         self._nav_client.wait_for_server()
 
         # Returns future to goal handle; client runs feedback_callback after sending the goal
         self._send_goal_future = self._nav_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
-
+        
         # Register a callback for when future is complete (i.e. server accepts or rejects goal request)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
     
-    def feedback_callback(self, feedback_msg):
-        feedback = feedback_msg.feedback
-        self.current_pose = feedback.current_waypoint.pose
+    def feedback_callback(self, feedback_msg: NavToWaypoint.Feedback):
+        self.current_pose = feedback_msg.feedback.current_waypoint.pose
     
     def goal_response_callback(self, future):
         # Get handle for the goal we just sent
@@ -134,6 +133,7 @@ class CallbackGroupDemo(Node):
 
         self.executing_action = goal_handle.accepted
         self.get_logger().info('Goal accepted :)')
+        self.get_logger().info(f'Navigating to wp {self.goal_index + 1} of {len(self.goals.poses)}')
 
         # Use goal handle to request the result
         self._get_result_future = goal_handle.get_result_async()
@@ -150,10 +150,10 @@ class CallbackGroupDemo(Node):
 
     # shutdown
     def shutdown_proc(self):
-        self.get_logger().info('Shutting down...')
+        pass
         # self.call_timer.cancel()
         # self._nav_client.destroy()
-        self.destroy_node()
+        # self.destroy_node()
 
 if __name__ == '__main__':
     rclpy.init()
