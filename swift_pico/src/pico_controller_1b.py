@@ -4,13 +4,57 @@
 # Importing the required libraries
 
 from swift_msgs.msg import SwiftMsgs
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseArray, Pose
 from pid_msg.msg import PIDTune, PIDError
 import rclpy
 from rclpy.node import Node
 
+SAMPLE_TIME_S = 0.060
 
-class Swift_Pico(Node):
+class PID:
+    def __init__(self, sample_time=SAMPLE_TIME_S, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2000.0, min_output=1000.0, offset=0.0):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.sample_time = sample_time
+        self.max_output = max_output
+        self.min_output = min_output
+
+        self.error = 0
+        self.offset = offset
+        
+        self.reset()
+    
+    def set_gains(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+
+    def compute(self, setpoint, current_value, clip_output=False):
+        error = setpoint - current_value
+        self.integral += error * self.sample_time
+        derivative = (error - self.prev_error) / self.sample_time
+
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+
+        output += self.offset
+        
+        if clip_output:
+            output = max(min(output, self.max_output), self.min_output)
+
+        output = abs(output) # to account for negative offsets
+
+        self.prev_error = error
+        
+        # for debugging
+        self.error = error
+        return output
+
+    def reset(self):
+        self.prev_error = 0
+        self.integral = 0
+
+class PicoControllerNode(Node):
     def __init__(self):
         super().__init__('pico_controller')  # initializing ros node with name pico_controller
 
@@ -20,6 +64,10 @@ class Swift_Pico(Node):
 
         # [x_setpoint, y_setpoint, z_setpoint]
         self.setpoint = [2, 2, 19]  # whycon marker at the position of the dummy given in the scene
+        self.setpoint_pose = Pose()
+        self.setpoint_pose.position.x = float(self.setpoint[0])
+        self.setpoint_pose.position.y = float(self.setpoint[1])
+        self.setpoint_pose.position.z = float(self.setpoint[2])
 
         # Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = SwiftMsgs()
@@ -29,23 +77,35 @@ class Swift_Pico(Node):
         self.cmd.rc_throttle = 1500
 
         # Initial setting of Kp, Ki, Kd for [roll, pitch, throttle]
+        self.roll_controller = PID(offset=1500)
+        self.pitch_controller = PID(offset=-1500)
+        self.throttle_controller = PID(offset=-1528)
+
         XY_P = 10
+        XY_I = 0
         XY_D = 35
         Z_constant = 18
         ratio = 2
         self.Kp = [XY_P, XY_P, Z_constant]
         self.Ki = [0, 0, 0]
         self.Kd = [XY_D, XY_D, Z_constant * ratio]
+        
+        # ---
+        self.roll_controller.set_gains(XY_P, XY_I, XY_D)
+        self.pitch_controller.set_gains(XY_P, XY_I, XY_D)
+        self.throttle_controller.set_gains(Z_constant, 0, Z_constant * ratio)
 
         # Additional PID variables
         self.prev_error = [0, 0, 0]  # Previous errors for [roll, pitch, throttle]
         self.error_sum = [0, 0, 0]  # Sum of errors for integral term
         self.max_values = [2000, 2000, 2000]  # Upper limit for [roll, pitch, throttle]
         self.min_values = [1000, 1000, 1000]  # Lower limit for [roll, pitch, throttle]
+
+        # NOTE: max_output not used
         self.max_output = 10  # Maximum allowable control signal to prevent sudden large changes
 
         # Sample time for running the PID algorithm
-        self.sample_time = 0.060  # in seconds
+        self.sample_time = SAMPLE_TIME_S
 
         # Publishing /drone_command, /pid_error
         self.command_pub = self.create_publisher(SwiftMsgs, '/drone_command', 10)
@@ -80,26 +140,21 @@ class Swift_Pico(Node):
         self.cmd.rc_aux4 = 2000
         self.command_pub.publish(self.cmd)  # Publishing /drone_command
 
-    # Whycon callback function
-    # The function gets executed each time when /whycon node publishes /whycon/poses
     def whycon_callback(self, msg):
         self.drone_position[0] = msg.poses[0].position.x
         self.drone_position[1] = msg.poses[0].position.y
         self.drone_position[2] = msg.poses[0].position.z
 
-    # Callback function for /throttle_pid
     def altitude_set_pid(self, alt):
         self.Kp[2] = alt.kp
         self.Ki[2] = alt.ki
         self.Kd[2] = alt.kd
 
-    # Callback function for /pitch_pid
     def pitch_set_pid(self, pitch):
         self.Kp[1] = pitch.kp
         self.Ki[1] = pitch.ki
         self.Kd[1] = pitch.kd
 
-    # Callback function for /roll_pid
     def roll_set_pid(self, roll):
         self.Kp[0] = roll.kp 
         self.Ki[0] = roll.ki 
@@ -109,56 +164,35 @@ class Swift_Pico(Node):
     def pid(self):
         # Skip PID calculation until valid position data is available
         if self.drone_position == [0.0, 0.0, 0.0]:
-            return
+            return           
 
-        # Step 1: Compute error in each axis [roll (x), pitch (y), throttle (z)]
-        error = [self.setpoint[i] - self.drone_position[i] for i in range(3)]
+        # refactor code 
+        _current_x = self.drone_position[0]
+        _current_y = self.drone_position[1]
+        _current_z = self.drone_position[2]
 
-        self.get_logger().info(f"height setpoint: {self.setpoint[2]}")
-        self.get_logger().info(f"Drone position: {self.drone_position[2]}")
-        self.get_logger().info(f"throttle error: {error[2]}")
+        self.cmd.rc_roll =  int(self.roll_controller.compute(self.setpoint_pose.position.x, _current_x))
+        self.cmd.rc_pitch =  int(self.pitch_controller.compute(self.setpoint_pose.position.y, _current_y))
+        self.cmd.rc_throttle =  int(self.throttle_controller.compute(self.setpoint_pose.position.z, _current_z))
+        # /refactor code 
 
-        # Step 2: Compute P, I, and D terms
-        for i in range(3):
-            P_term = self.Kp[i] * error[i]
-            self.error_sum[i] += error[i] * self.sample_time
-            I_term = self.Ki[i] * self.error_sum[i]
-            D_term = self.Kd[i] * (error[i] - self.prev_error[i]) / self.sample_time
-
-            # Step 3: Calculate output
-            output = P_term + I_term + D_term
-            # Step 4: Adjust command value (1550 is base for steady throttle)
-            if i == 0:  # Roll
-                self.cmd.rc_roll = int(1500 + output)
-                self.cmd.rc_roll = max(min(self.cmd.rc_roll, self.max_values[0]), self.min_values[0])
-            elif i == 1:  # Pitch
-                self.cmd.rc_pitch = int(1500 - output)
-                self.cmd.rc_pitch = max(min(self.cmd.rc_pitch, self.max_values[1]), self.min_values[1])
-            else:  # Throttle (z-axis)
-                # Base of 1550 for maintaining steady position
-                self.cmd.rc_throttle = int(1528 - output)
-                self.cmd.rc_throttle = max(min(self.cmd.rc_throttle, self.max_values[2]), self.min_values[2])
-
-            # Step 7: Update previous error
-            self.prev_error[i] = error[i]
-
-            # Log the control signal output
-            self.get_logger().info(f"Drone position: {self.drone_position[2]}, throttle error: {error[2]}, Throttle command: {self.cmd.rc_throttle}, Control Signal: {output}")
-
-        # Step 6: Publish command after all adjustments
         self.command_pub.publish(self.cmd)
 
-        # Step 8: Publish error values
+        # Publish error values
+        # refactor code
         pid_error_msg = PIDError()
-        pid_error_msg.roll_error = error[0]
-        pid_error_msg.pitch_error = error[1]
-        pid_error_msg.throttle_error = error[2]
+
+        pid_error_msg.roll_error = self.roll_controller.error
+        pid_error_msg.pitch_error = self.pitch_controller.error
+        pid_error_msg.throttle_error = self.throttle_controller.error
+        # /refactor code
+
         self.pid_error_pub.publish(pid_error_msg)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    swift_pico = Swift_Pico()
+    swift_pico =    PicoControllerNode()
     rclpy.spin(swift_pico)
     swift_pico.destroy_node()
     rclpy.shutdown()

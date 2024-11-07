@@ -1,0 +1,5 @@
+# request
+bool get_waypoints
+---
+# response
+geometry_msgs/PoseArray waypoints

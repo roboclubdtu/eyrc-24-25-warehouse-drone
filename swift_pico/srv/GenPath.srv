@@ -1,0 +1,5 @@
+# Request
+geometry_msgs/Point[] waypoints
+---
+# Response
+geometry_msgs/Point[] path

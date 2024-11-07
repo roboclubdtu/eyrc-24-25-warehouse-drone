@@ -16,18 +16,31 @@ find_package(rclcpp REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(swift_pico_description REQUIRED)
 find_package(rotors_swift_gazebo)
+# find_package(OpenCV REQUIRED)
+
 
 find_package(rosidl_default_generators REQUIRED)
 
 # interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/GenPath.srv"
   "action/GoToPoint.action"
   "action/NavigatePath.action"
   "action/Hover.action"
   DEPENDENCIES geometry_msgs
 )
 
+# Include directories
+include_directories(${CMAKE_SOURCE_DIR}/src/swift_pico/include)
+
+include_directories(${OpenCV_INCLUDE_DIRS})
+
 #executables
+add_executable(path_planning_service_cpp src/path_planning_service.cpp)
+ament_target_dependencies(path_planning_service_cpp
+  rclcpp
+  geometry_msgs
+)
 
 #task1a
 # add_executable(pico_controller_cpp src/pico_controller.cpp)
@@ -41,7 +54,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 #task2b
 # add_executable(pico_server_2b_cpp src/pico_server_2b.cpp)
 # add_executable(pico_client_2b_cpp src/pico_client_2b.cpp)
-add_executable(path_planning_service_cpp src/path_planning_service.cpp)
+# add_executable(path_planning_service_cpp src/path_planning_service.cpp)
 # add_executable(bit_map_cpp scripts/bit_map.cpp)
 
 #task2c
@@ -66,13 +79,17 @@ add_executable(path_planning_service_cpp src/path_planning_service.cpp)
 # ament_target_dependencies(pico_server_2b_cpp rclcpp swift_msgs pid_msg geometry_msgs waypoint_navigation)
 # ament_target_dependencies(pico_client_2b_cpp rclcpp swift_msgs pid_msg geometry_msgs waypoint_navigation)
 # ament_target_dependencies(bit_map_cpp OpenCV)
-ament_target_dependencies(path_planning_service_cpp rclcpp swift_msgs pid_msg geometry_msgs waypoint_navigation)
+# ament_target_dependencies(path_planning_service_cpp rclcpp geometry_msgs OpenCV)
+# ament_target_dependencies(path_planning_service_cpp rclcpp swift_msgs pid_msg geometry_msgs OpenCV)
 
 
 #task2c
 # ament_target_dependencies(pico_server_2c_cpp rclcpp swift_msgs pid_msg geometry_msgs waypoint_navigation)
 # ament_target_dependencies(pico_client_2c_cpp rclcpp swift_msgs pid_msg geometry_msgs waypoint_navigation)
 # ament_target_dependencies(warehouse_service_cpp rclcpp swift_msgs pid_msg geometry_msgs waypoint_navigation)
+
+# Link libraries
+target_link_libraries(path_planning_service_cpp ${OpenCV_LIBS})
 
 
 #Target installations
@@ -102,7 +119,6 @@ install(TARGETS
 
 #Install scripts
 install(PROGRAMS
-  src/pico_controller.py
   scripts/map.py
   src/pico_client.py
   src/pico_server.py
@@ -114,6 +130,9 @@ install(PROGRAMS
   src/pico_client_2c.py
   src/pico_server_2c.py
   src/warehouse_service.py
+
+  # test nodes
+  src/nav_to_waypoint_test_server.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
