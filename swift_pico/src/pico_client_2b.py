@@ -6,20 +6,20 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseArray, Pose
+from std_msgs.msg import Int32MultiArray
 
 from pico_utils import ClientStates
 from waypoint_navigation.srv import GetWaypoints
 from waypoint_navigation.action import NavToWaypoint
 
 TIMER_INTERVAL_S = 0.25
+PREDEFINED_WP_HEIGHT_M = 27.0
 
-class CallbackGroupDemo(Node):
+class PicoClientNode(Node):
     def __init__(self):
-        super().__init__('waypoint_client')
+        super().__init__('pico_client')
         self.state = ClientStates.IDLE
-        self.goals:PoseArray = None
-        self.current_pose = Pose()
-        self.goal_index = 0
+        
 
         self.ros_interfaces_init()
 
@@ -27,45 +27,67 @@ class CallbackGroupDemo(Node):
 
     def ros_interfaces_init(self):
         client_cb_group = ReentrantCallbackGroup()
-        timer_cb_group = None
+        main_cb_group = None
+
+        # points subscriber
+        self.waypoints:PoseArray = None
+        self.waypoints_sub = \
+            self.create_subscription(Int32MultiArray, '/random_points', self.waypoints_sub_cb, 10, callback_group=main_cb_group)
         
         # service client
         self._get_waypoints_client = self.create_client(GetWaypoints, "GetWaypoints", callback_group=client_cb_group)
         
         # action client
+        self.goals:PoseArray = None
+        self.current_pose = Pose()
+        self.goal_index = 0
         self._nav_client = ActionClient(self, NavToWaypoint, "waypoint_navigation", callback_group=client_cb_group)
         self.executing_action = False
         
         # timer
-        self.call_timer = self.create_timer(TIMER_INTERVAL_S, self.timer_cb, callback_group=timer_cb_group)
+        self.call_timer = self.create_timer(TIMER_INTERVAL_S, self.timer_cb, callback_group=main_cb_group)
 
-    # State machine functions
     def timer_cb(self):
         self.get_logger().debug(f'State: {self.state}')
         state_fn = {
-            ClientStates.IDLE: self.idle_state,
-            ClientStates.GETTING_PATH: self.getting_path_state,
-            ClientStates.NAVIGATING: self.navigating_state,
+            ClientStates.IDLE: self.state_idle,
+            ClientStates.GETTING_PATH: self.state_getting_path,
+            ClientStates.NAVIGATING: self.state_navigating,
             ClientStates.DONE: self.shutdown_proc
         }
 
         state_fn[self.state]()
-    
-    def idle_state(self):
+
+    def waypoints_sub_cb(self, msg:PoseArray):
+        if not self.waypoints:
+            self.waypoints = PoseArray()
+            for i in range(0, len(msg.data), 2):
+                pose = Pose()
+                pose.position.x = float(msg.data[i])
+                pose.position.y = float(msg.data[i+1])
+                pose.position.z = PREDEFINED_WP_HEIGHT_M
+                pose.orientation.w = 1.0  # Assuming no rotation
+
+                self.waypoints.poses.append(pose)
+            
+            self.get_logger().info(f"{len(self.waypoints.poses)} Waypoints received")
+
+    # State machine functions
+    def state_idle(self):
         # check if service is available
         if not self._get_waypoints_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('Service not available')
+            self.get_logger().warn('Service not available', throttle_duration_sec=1.0)
             return
         
         self.get_logger().info(f"'{self._get_waypoints_client.srv_name}' service available")
         self.change_state(ClientStates.GETTING_PATH)
     
-    def getting_path_state(self):
+    def state_getting_path(self):
         self.call_get_waypoints()
         if self.goals:
             self.change_state(ClientStates.NAVIGATING)
 
-    def navigating_state(self):
+    def state_navigating(self):
         if self.goal_index >= len(self.goals.poses):
             self.get_logger().info('Reached end of path')
             self.get_logger().info('Task done')
@@ -148,7 +170,7 @@ class CallbackGroupDemo(Node):
 
 if __name__ == '__main__':
     rclpy.init()
-    node = CallbackGroupDemo()
+    node = PicoClientNode()
     executor = MultiThreadedExecutor()
     executor.add_node(node)
 
