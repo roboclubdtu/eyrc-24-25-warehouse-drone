@@ -19,16 +19,12 @@ find_package(rotors_swift_gazebo)
 # find_package(OpenCV REQUIRED)
 
 
-find_package(rosidl_default_generators REQUIRED)
+# find_package(rosidl_default_generators REQUIRED)
 
 # interfaces
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "srv/GenPath.srv"
-  "action/GoToPoint.action"
-  "action/NavigatePath.action"
-  "action/Hover.action"
-  DEPENDENCIES geometry_msgs
-)
+# rosidl_generate_interfaces(${PROJECT_NAME}
+#   DEPENDENCIES 
+# )
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/src/swift_pico/include)
@@ -126,7 +122,7 @@ install(PROGRAMS
   scripts/bit_map.py
   src/pico_client_2b.py
   src/pico_server_2b.py
-  # src/path_planning_service.py
+  src/path_planning_service.py
   src/pico_client_2c.py
   src/pico_server_2c.py
   src/warehouse_service.py
