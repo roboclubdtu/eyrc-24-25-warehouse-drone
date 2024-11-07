@@ -1,0 +1,18 @@
+pico_controller:
+  ros__parameters:
+    # controller_frequency: 50.0  # Frequency at which the controller runs (Hz)
+    # max_speed: 1.0  # Maximum speed of the robot (m/s)
+    pid_roll:
+      kp: 10.0
+      ki: 0.0
+      kd: 35.0
+
+    pid_pitch:
+      kp: 10.0
+      ki: 0.0 
+      kd: 35.0
+
+    pid_throttle:
+      kp: 18.0
+      ki: 0.0
+      kd: 36.0
