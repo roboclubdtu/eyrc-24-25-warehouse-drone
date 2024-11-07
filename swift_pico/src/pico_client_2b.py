@@ -8,18 +8,16 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseArray, Pose
 from std_msgs.msg import Int32MultiArray
 
-from pico_utils import ClientStates
-from waypoint_navigation.srv import GetWaypoints
+from pico_utils import ClientStates, PREDEFINED_WP_HEIGHT_M
+from waypoint_navigation.srv import GetPath
 from waypoint_navigation.action import NavToWaypoint
 
 TIMER_INTERVAL_S = 0.25
-PREDEFINED_WP_HEIGHT_M = 27.0
 
 class PicoClientNode(Node):
     def __init__(self):
         super().__init__('pico_client')
         self.state = ClientStates.IDLE
-        
 
         self.ros_interfaces_init()
 
@@ -35,7 +33,9 @@ class PicoClientNode(Node):
             self.create_subscription(Int32MultiArray, '/random_points', self.waypoints_sub_cb, 10, callback_group=main_cb_group)
         
         # service client
-        self._get_waypoints_client = self.create_client(GetWaypoints, "GetWaypoints", callback_group=client_cb_group)
+        self.path:PoseArray = None
+        # self._get_waypoints_client = self.create_client(GetWaypoints, "GetWaypoints", callback_group=client_cb_group)
+        self._get_path_client = self.create_client(GetPath, "GetPath", callback_group=client_cb_group)
         
         # action client
         self.goals:PoseArray = None
@@ -75,16 +75,21 @@ class PicoClientNode(Node):
     # State machine functions
     def state_idle(self):
         # check if service is available
-        if not self._get_waypoints_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('Service not available', throttle_duration_sec=1.0)
+        if not self._get_path_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn(f"Service '{self._get_path_client.srv_name}' not available", throttle_duration_sec=1.0)
+            return
+        else:
+            self.get_logger().debug(f"'{self._get_path_client.srv_name}' service available")
+        
+        if not self.waypoints:
+            self.get_logger().warn("Waiting to receive waypoints for path generation", throttle_duration_sec=0.25)
             return
         
-        self.get_logger().info(f"'{self._get_waypoints_client.srv_name}' service available")
         self.change_state(ClientStates.GETTING_PATH)
     
     def state_getting_path(self):
-        self.call_get_waypoints()
-        if self.goals:
+        self.call_get_path()
+        if self.path:
             self.change_state(ClientStates.NAVIGATING)
 
     def state_navigating(self):
@@ -107,15 +112,16 @@ class PicoClientNode(Node):
         return next_waypoint
     
     # service fns
-    def call_get_waypoints(self):
-        self.get_logger().info('Fetching waypoints')
-        req = GetWaypoints.Request()
-        req.get_waypoints = True
-        future:GetWaypoints.Response = self._get_waypoints_client.call(req)
+    def call_get_path(self):
+        self.get_logger().info('Fetching path for waypoints...')
+        req = GetPath.Request()
 
-        if hasattr(future, 'waypoints') and future.waypoints:
-            self.get_logger().info(f'Received waypoints. {len(future.waypoints.poses)} waypoints')
-            self.goals = future.waypoints
+        req.waypoints = self.waypoints
+        future:GetPath.Response = self._get_path_client.call(req)
+
+        if hasattr(future, 'path') and future.path:
+            self.get_logger().info(f'Received path with {len(future.path.poses)} points')
+            self.path = future.path
 
     # action fns
     def send_goal(self):

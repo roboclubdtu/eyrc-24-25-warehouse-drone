@@ -1,9 +1,10 @@
 
 from rclpy.time import Time
 
-from geometry_msgs.msg import Pose, PoseStamped
+from geometry_msgs.msg import Pose, PoseStamped, PoseArray
 from enum import Enum, auto
 
+PREDEFINED_WP_HEIGHT_M = 27.0
 
 class PID:
     def __init__(self, sample_time, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2000.0, min_output=1000.0, offset=0.0):
@@ -68,3 +69,14 @@ def timestamp_pose(pose:Pose, stamp: Time):
 
 def coords_from_pose(pose:Pose):
     return (pose.position.x, pose.position.y, pose.position.z)
+
+def coords_list_to_pose_array(coords:list):
+    pose_array = PoseArray()
+    for x, y, z in coords:
+        pose = Pose()
+        pose.position.x = x
+        pose.position.y = y
+        pose.position.z = z
+        pose.orientation.w = 1.0  # Default orientation
+        pose_array.poses.append(pose)
+    return pose_array
