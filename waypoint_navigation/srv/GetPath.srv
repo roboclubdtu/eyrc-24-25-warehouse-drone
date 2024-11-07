@@ -1,0 +1,5 @@
+# request
+geometry_msgs/PoseArray waypoints
+---
+# response
+geometry_msgs/PoseArray path

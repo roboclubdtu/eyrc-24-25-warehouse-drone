@@ -17,7 +17,9 @@ find_package(rosidl_default_generators REQUIRED)
 # interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetWaypoints.srv"
+  "srv/GetPath.srv"
   "action/NavToWaypoint.action"
+  "action/NavigatePath.action"
   DEPENDENCIES geometry_msgs
 )
 
