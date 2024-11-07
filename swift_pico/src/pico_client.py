@@ -13,15 +13,6 @@ from waypoint_navigation.action import NavToWaypoint
 
 TIMER_INTERVAL_S = 0.25
 
-def DUMMY_POSE():
-    dummy_pose = Pose()
-    dummy_pose.position.x = 1.0
-    dummy_pose.position.y = 1.0
-    dummy_pose.position.z = 0.0
-    dummy_pose.orientation.w = 1.0
-
-    return dummy_pose
-
 class CallbackGroupDemo(Node):
     def __init__(self):
         super().__init__('waypoint_client')

@@ -1,140 +1,161 @@
 #!/usr/bin/env python3
-# WD_4122
-
 import rclpy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from rclpy.qos import QoSProfile
 
-from typing import List
-from enum import Enum
+from geometry_msgs.msg import PoseArray, Pose
 
-# Import action and service messages
-from swift_pico.action import GoToPoint, NavigatePath, Hover
-from swift_pico.srv import GenPath
-from std_msgs.msg import String, Int32MultiArray
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from geometry_msgs.msg import Point
+from pico_utils import ClientStates
+from waypoint_navigation.srv import GetWaypoints
+from waypoint_navigation.action import NavToWaypoint
 
+TIMER_INTERVAL_S = 0.25
 
-class State(Enum):
-    IDLE = 0
-    GENERATING_PATH = 1
-    MOVING = 2
-    HOVERING = 3
-
-class picoClient(Node):
+class CallbackGroupDemo(Node):
     def __init__(self):
-        super().__init__('pico_client_2b')
-
-        self.state: State = State.IDLE
-
-        self.waypoints: List[Point] = []
+        super().__init__('waypoint_client')
+        self.state = ClientStates.IDLE
+        self.goals:PoseArray = None
+        self.current_pose = Pose()
+        self.goal_index = 0
 
         self.ros_interfaces_init()
 
         self.get_logger().info(f"{self.get_name()} node has been started.")
 
     def ros_interfaces_init(self):
-        self.go_to_point_client = ActionClient(self, GoToPoint, 'go_to_point')
-        self.navigate_path_client = ActionClient(self, NavigatePath, 'navigate_path')
-        self.hover_client = ActionClient(self, Hover, 'hover')
+        client_cb_group = ReentrantCallbackGroup()
+        timer_cb_group = None
+        
+        # service client
+        self._get_waypoints_client = self.create_client(GetWaypoints, "GetWaypoints", callback_group=client_cb_group)
+        
+        # action client
+        self._nav_client = ActionClient(self, NavToWaypoint, "waypoint_navigation", callback_group=client_cb_group)
+        self.executing_action = False
+        
+        # timer
+        self.call_timer = self.create_timer(TIMER_INTERVAL_S, self.timer_cb, callback_group=timer_cb_group)
 
-        self.generate_path_client = self.create_client(GenPath, 'GeneratePath')
-
-        qos_profile = QoSProfile(depth=10)
-
-        self.random_points_subscriber = self.create_subscription(
-            Int32MultiArray,
-            '/random_points',
-            self.random_points_callback,
-            qos_profile
-        )
-
-        self.diagnostics_publisher = self.create_publisher(DiagnosticArray, '/diagnostics', qos_profile)
-
-        self.diagnostics_timer = self.create_timer(1.0, self.publish_diagnostics)  # Publish diagnostics every second
-        self.main_timer = self.create_timer(0.1, self.main_timer_callback)  # Main loop timer
-    
-    def main_timer_callback(self):
+    # State machine functions
+    def timer_cb(self):
+        self.get_logger().debug(f'State: {self.state}')
         state_fn = {
-            State.IDLE: self.idle_state,
-            State.GENERATING_PATH: self.generating_path_state,
-            State.MOVING: self.moving_state,
-            State.HOVERING: self.hovering_state
+            ClientStates.IDLE: self.idle_state,
+            ClientStates.GETTING_PATH: self.getting_path_state,
+            ClientStates.NAVIGATING: self.navigating_state,
+            ClientStates.DONE: self.shutdown_proc
         }
 
         state_fn[self.state]()
     
     def idle_state(self):
-        if self.waypoints:
-            self.change_state(State.GENERATING_PATH)
+        # check if service is available
+        if not self._get_waypoints_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn('Service not available')
+            return
+        
+        self.get_logger().info(f"'{self._get_waypoints_client.srv_name}' service available")
+        self.change_state(ClientStates.GETTING_PATH)
     
-    def generating_path_state(self):
+    def getting_path_state(self):
+        self.call_get_waypoints()
+        if self.goals:
+            self.change_state(ClientStates.NAVIGATING)
+
+    def navigating_state(self):
+        if self.goal_index >= len(self.goals.poses):
+            self.get_logger().info('Reached end of path')
+            self.get_logger().info('Task done')
+            self.change_state(ClientStates.DONE)
+            return
         
-        pass
+        if self.executing_action:
+            return
+        self.send_goal()
+
+    def change_state(self, state: ClientStates):
+        self.get_logger().warn(f'State changed from {self.state} to {state}')
+        self.state = state
+
+    def next_waypoint(self):
+        next_waypoint = self.goals.poses[self.goal_index]
+        return next_waypoint
     
-    def moving_state(self):
-        pass
+    # service fns
+    def call_get_waypoints(self):
+        self.get_logger().info('Fetching waypoints')
+        req = GetWaypoints.Request()
+        req.get_waypoints = True
+        future:GetWaypoints.Response = self._get_waypoints_client.call(req)
 
-    def hovering_state(self):
-        pass
+        if hasattr(future, 'waypoints') and future.waypoints:
+            self.get_logger().info(f'Received waypoints. {len(future.waypoints.poses)} waypoints')
+            self.goals = future.waypoints
 
-    def random_points_callback(self, msg:Int32MultiArray):
-        assert len(msg.data) % 2 == 0, "Message data length should be even."
+    # action fns
+    def send_goal(self):
+        # inspired from https://foxglove.dev/blog/creating-ros2-actions
+        self.get_logger().info('Sending goal...')
+
+        goal_msg = NavToWaypoint.Goal()
+        goal_msg.waypoint = self.next_waypoint()
+        self._nav_client.wait_for_server()
+
+        # Returns future to goal handle; client runs feedback_callback after sending the goal
+        self._send_goal_future = self._nav_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
         
-        if not self.waypoints:
-            for i in range(0, len(msg.data), 2):
-                point = Point()
-                point.x = float(msg.data[i])
-                point.y = float(msg.data[i+1])
-                self.waypoints.append(point)
-            
-            self.get_logger().info(f"Waypoints: {self.waypoints}")
-        
-    def call_generate_path_service(self, waypoints):
-        if not self.generate_path_client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error("Service 'GeneratePath' not available.")
+        # Register a callback for when future is complete (i.e. server accepts or rejects goal request)
+        self._send_goal_future.add_done_callback(self.goal_response_callback)
+    
+    def feedback_callback(self, feedback_msg: NavToWaypoint.Feedback):
+        self.current_pose = feedback_msg.feedback.current_waypoint.pose
+    
+    def goal_response_callback(self, future):
+        # Get handle for the goal we just sent
+        goal_handle = future.result()
+
+        # Return early if goal is rejected
+        if not goal_handle.accepted:
+            self.get_logger().info('Goal rejected :(')
             return
 
-        request = GenPath.Request()
-        request.waypoints = waypoints
+        self.executing_action = goal_handle.accepted
+        self.get_logger().info('Goal accepted :)')
+        self.get_logger().info(f'Navigating to wp {self.goal_index + 1} of {len(self.goals.poses)}')
 
-        future = self.generate_path_client.call_async(request)
-        future.add_done_callback(self.generate_path_response_callback)
+        # Use goal handle to request the result
+        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future.add_done_callback(self.get_result_callback)
 
-    def generate_path_response_callback(self, future):
-        try:
-            response = future.result()
-            self.get_logger().info(f"Received path: {response.paths}")
-        except Exception as e:
-            self.get_logger().error(f"Service call failed: {str(e)}")
+    def get_result_callback(self, future):
+        result = future.result().result
 
-    def publish_diagnostics(self):
-        diagnostics_msg = DiagnosticArray()
-        diagnostics_msg.header.stamp = self.get_clock().now().to_msg()
+        # Log result and shut down ROS 2 cleanly
+        self.get_logger().info('Result: hov_time:{0}'.format(result.hov_time))
 
-        status = DiagnosticStatus()
-        status.level = DiagnosticStatus.OK
-        status.name = "picoClient Diagnostics"
-        status.message = "System is running smoothly"
-        status.values = [KeyValue(key="Status", value="Operational")]
+        self.executing_action = False
+        self.goal_index += 1
 
-        diagnostics_msg.status.append(status)
-        self.diagnostics_publisher.publish(diagnostics_msg)
-
-    def change_state(self, state: State):
-        self.state = state
-        self.get_logger().info(f"State changed to: {self.state}")
-
-def main(args=None):
-    rclpy.init(args=args)
-    pico_client_node = picoClient()
-    rclpy.spin(pico_client_node)
-
-    # Shutdown
-    pico_client_node.destroy_node()
-    rclpy.shutdown()
+    # shutdown
+    def shutdown_proc(self):
+        pass
+        # self.call_timer.cancel()
+        # self._nav_client.destroy()
+        # self.destroy_node()
 
 if __name__ == '__main__':
-    main()
+    rclpy.init()
+    node = CallbackGroupDemo()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+
+    try:
+        node.get_logger().info('Beginning client, shut down with CTRL-C')
+        executor.spin()
+    except KeyboardInterrupt:
+        node.get_logger().info('Keyboard interrupt, shutting down.\n')
+    # node.destroy_node()
+    rclpy.shutdown()
