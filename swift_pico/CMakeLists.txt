@@ -116,6 +116,7 @@ install(TARGETS
 #Install scripts
 install(PROGRAMS
   scripts/map.py
+  scripts/path_planning.py
   src/pico_client.py
   src/pico_server.py
   src/waypoint_service.py
