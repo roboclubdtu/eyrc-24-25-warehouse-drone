@@ -18,6 +18,7 @@ find_package(swift_pico_description REQUIRED)
 find_package(rotors_swift_gazebo)
 # find_package(OpenCV REQUIRED)
 
+find_package(ament_cmake_python REQUIRED)
 
 # find_package(rosidl_default_generators REQUIRED)
 
@@ -103,7 +104,7 @@ install(TARGETS
   # waypoint_service_cpp
   # pico_client_cpp
   # pico_server_cpp
-  path_planning_service_cpp
+  # path_planning_service_cpp
   # pico_client_2b_cpp
   # pico_server_2b_cpp
   # bit_map_cpp
@@ -113,13 +114,10 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-#Install scripts
-install(PROGRAMS
-  # scripts/map.py
-  scripts/bit_map.py
-  scripts/path_planning.py
-  scripts/whycon_mapper.py
+# Install the Python package
+ament_python_install_package(${PROJECT_NAME})
 
+install(PROGRAMS
   src/pico_client.py
   src/pico_server.py
   src/waypoint_service.py

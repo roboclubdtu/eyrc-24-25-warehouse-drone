@@ -5,10 +5,14 @@ from geometry_msgs.msg import Pose, PoseArray
 from sensor_msgs.msg import Image
 from waypoint_navigation.srv import GetPath
 
+import numpy as np
 from cv_bridge import CvBridge
 
-from swift_pico.scripts import path_planning, bit_map
-from pico_utils import PREDEFINED_WP_HEIGHT_M, coords_list_to_pose_array
+# from swift_pico.scripts import bit_map
+from swift_pico.scripts import path_planning
+# from swift_pico.scripts
+
+from pico_utils import BITMAP_PATH, PREDEFINED_WP_HEIGHT_M, coords_list_to_pose_array
 
 def dummy_path():
     # Straight line path along Y-axis
@@ -18,12 +22,28 @@ class PathPlanningServer(Node):
     def __init__(self):
         super().__init__('path_planning_server')
         
+        self.path_planner_init()
         self.ros_interfaces_init()
 
         self.get_logger().info(f"'{self.get_name()}' node has been started.")
 
+    def path_planner_init(self):        
+        x_min, x_max, y_min, y_max, map_width, map_height, grid_size, robot_radius = \
+            path_planning.get_planner_init_params(x_max=1000, y_max=1000, robot_radius=10.0, grid_size=10.0)
+        
+        # set obstacle positions
+        ox, oy = [], []
+        # map surroundings
+        ox, oy = path_planning.place_wall_positions(ox, oy, x_min, x_max, y_min, y_max, grid_size)
+        # place obstacles
+        ox, oy = path_planning.place_bitmap_obstacles(ox, oy, bit_map=np.load(BITMAP_PATH), grid_size=grid_size)
+
+        self.path_planner = path_planning.AStarPlanner(ox, oy, grid_size, robot_radius)
+
+        self.get_logger().info("Path planner initialized")
+
     def ros_interfaces_init(self):
-        self.bit_image = None
+        self.bit_map = None
         self.cv_bridge = CvBridge()
         self.subscription = self.create_subscription(
             Image, "/arena_display/output", self.image_callback, 10
@@ -32,11 +52,11 @@ class PathPlanningServer(Node):
         self.srv = self.create_service(GetPath, 'GetPath', self.get_path_cb)
 
     def image_callback(self, msg):
-        if not self.bit_image:
+        if not self.bit_map:
             try:
                 self.get_logger().info("Received an image!")
                 cv_image = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
-                self.bit_image = bit_map.create_2d_bitmap(cv_image)
+                self.bit_map = bit_map.create_2d_bitmap(cv_image)
                 self.generate_map()
                 self.get_logger().info("bitmap created")
 
@@ -57,7 +77,7 @@ class PathPlanningServer(Node):
     def generate_map(self):
         self.get_logger().info("Generating map")
         # Generate the map
-        self.map = path_planning.generate_map(self.bit_image)
+        self.map = path_planning.generate_map(self.bit_map)
         self.get_logger().info("Map generated")
 
     def get_waypoints(self):

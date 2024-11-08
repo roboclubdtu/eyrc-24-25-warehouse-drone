@@ -5,6 +5,7 @@ from geometry_msgs.msg import Pose, PoseStamped, PoseArray
 from enum import Enum, auto
 
 PREDEFINED_WP_HEIGHT_M = 27.0
+BITMAP_PATH = '/home/dtu_dev/ws/pico_ws/src/waypoint_navigation/map/2D_bit_map.npy'
 
 class PID:
     def __init__(self, sample_time, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2000.0, min_output=1000.0, offset=0.0):

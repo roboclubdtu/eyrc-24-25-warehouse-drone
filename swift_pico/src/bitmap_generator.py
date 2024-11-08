@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-from bitmap import bit_map
+from swift_pico.scripts import bit_map
 
 
 class ImageSubscriber(Node):
