@@ -2,28 +2,46 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, PoseArray
+from sensor_msgs.msg import Image
 from waypoint_navigation.srv import GetPath
 
-from swift_pico.scripts import path_planning
+from cv_bridge import CvBridge
 
+from swift_pico.scripts import path_planning, bit_map
 from pico_utils import PREDEFINED_WP_HEIGHT_M, coords_list_to_pose_array
 
 def dummy_path():
     # Straight line path along Y-axis
     return coords_list_to_pose_array([[0.0, y * 0.1, 27.0] for y in range(21)])
-    
+
 class PathPlanningServer(Node):
     def __init__(self):
         super().__init__('path_planning_server')
+        
         self.ros_interfaces_init()
-
 
         self.get_logger().info(f"'{self.get_name()}' node has been started.")
 
     def ros_interfaces_init(self):
+        self.bit_image = None
+        self.cv_bridge = CvBridge()
+        self.subscription = self.create_subscription(
+            Image, "/arena_display/output", self.image_callback, 10
+        )
 
         self.srv = self.create_service(GetPath, 'GetPath', self.get_path_cb)
 
+    def image_callback(self, msg):
+        if not self.bit_image:
+            try:
+                self.get_logger().info("Received an image!")
+                cv_image = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
+                self.bit_image = bit_map.create_2d_bitmap(cv_image)
+                self.generate_map()
+                self.get_logger().info("bitmap created")
+
+            except Exception as e:
+                self.get_logger().error(f"Could not convert image: {e}")
 
     def get_path_cb(self, request:GetPath.Request, response:GetPath.Response):
         self.get_logger().info("Path planning request received")
@@ -35,6 +53,12 @@ class PathPlanningServer(Node):
         else:
             self.get_logger().error(f"waypoints are invalid. waypoints: {request.waypoints}")
         return response
+
+    def generate_map(self):
+        self.get_logger().info("Generating map")
+        # Generate the map
+        self.map = path_planning.generate_map(self.bit_image)
+        self.get_logger().info("Map generated")
 
     def get_waypoints(self):
         pose_array = PoseArray()

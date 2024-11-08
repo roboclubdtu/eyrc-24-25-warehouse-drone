@@ -115,20 +115,23 @@ install(TARGETS
 
 #Install scripts
 install(PROGRAMS
-  scripts/map.py
+  # scripts/map.py
+  scripts/bit_map.py
   scripts/path_planning.py
+  scripts/whycon_mapper.py
+
   src/pico_client.py
   src/pico_server.py
   src/waypoint_service.py
-  scripts/bit_map.py
   src/pico_client_2b.py
   src/pico_server_2b.py
   src/path_planning_service.py
   src/pico_client_2c.py
   src/pico_server_2c.py
   src/warehouse_service.py
-
+  
   # test nodes
+  src/bitmap_generator.py
   src/nav_to_waypoint_test_server.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -11,7 +11,7 @@ See Wikipedia article (https://en.wikipedia.org/wiki/A*_search_algorithm)
 """
 
 import math
-
+import time
 import matplotlib.pyplot as plt
 import numpy as np
 show_animation = True
@@ -19,7 +19,7 @@ show_animation = True
 
 class AStarPlanner:
 
-    def __init__(self, ox, oy, resolution, rr):
+    def __init__(self, ox, oy, resolution, rr, animate=False):
         """
         Initialize grid map for a star planning
 
@@ -36,6 +36,7 @@ class AStarPlanner:
         self.obstacle_map = None
         self.x_width, self.y_width = 0, 0
         self.motion = self.get_motion_model()
+        self.animate = animate
         self.calc_obstacle_map(ox, oy)
 
     class Node:
@@ -85,7 +86,7 @@ class AStarPlanner:
             current = open_set[c_id]
 
             # show graph
-            if show_animation:  # pragma: no cover
+            if self.animate:  # pragma: no cover
                 plt.plot(self.calc_grid_position(current.x, self.min_x),
                          self.calc_grid_position(current.y, self.min_y), "xc")
                 # for stopping simulation with the esc key.
@@ -234,37 +235,90 @@ def generate_map(bit_image:np.ndarray):
     # Generate the map
     return bit_map
 
+def get_params(**kwargs):
+    # original values
+    x_min = -10
+    x_max = 60
+    y_min = -10
+    y_max = 60
+    map_width = x_max - x_min
+    map_height = y_max - y_min
+
+    sx = 10.0  
+    sy = 10.0  
+    gx = 50.0  
+    gy = 50.0  
+    grid_size = 2.0
+    robot_radius = 1.0
+
+    # if any kwargs
+    if kwargs:
+        x_min = kwargs.get('x_min', x_min)
+        x_max = kwargs.get('x_max', x_max)
+        y_min = kwargs.get('y_min', y_min)
+        y_max = kwargs.get('y_max', y_max)
+        map_width = kwargs.get('map_width', map_width)
+        map_height = kwargs.get('map_height', map_height)
+        sx = kwargs.get('sx', sx)
+        sy = kwargs.get('sy', sy)
+        gx = kwargs.get('gx', gx)
+        gy = kwargs.get('gy', gy)
+        grid_size = kwargs.get('grid_size', grid_size)
+        robot_radius = kwargs.get('robot_radius', robot_radius)
+
+    return x_min, x_max, y_min, y_max, map_width, map_height, sx, sy, gx, gy, grid_size, robot_radius
+
+
+def place_wall_positions(ox:list,oy:list,x_min, x_max, y_min, y_max, grid_size):
+    # map surroundings
+    # bottom wall
+    for i in range(x_min, x_max, int(grid_size)):
+        ox.append(i)
+        oy.append(y_min)
+    # top wall
+    for i in range(x_min, x_max+1, int(grid_size)):
+        ox.append(i)
+        oy.append(y_max)
+    # left wall
+    for i in range(y_min, y_max, int(grid_size)):
+        ox.append(x_min)
+        oy.append(i)
+    # right wall
+    for i in range(y_min, y_max+1, int(grid_size)):
+        ox.append(y_max)
+        oy.append(i)
+    return ox, oy
+
+def place_obstacles(ox:list, oy:list, bit_map:np.ndarray, grid_size):
+    for row in range(0, bit_map.shape[0], int(grid_size)):
+        for col in range(0, bit_map.shape[1], int(grid_size)):
+            if bit_map[row, col] == 1:
+                ox.append(col)
+                oy.append(row)
+    return ox, oy
+
 def main():
     print(__file__ + " start!!")
 
-    # start and goal position
-    sx = 10.0  # [m]
-    sy = 10.0  # [m]
-    gx = 50.0  # [m]
-    gy = 50.0  # [m]
-    grid_size = 2.0  # [m]
-    robot_radius = 1.0  # [m]
+    params = get_params(
+        sx = 500, sy = 500,
+        gx = 800, gy = 800,
 
+        x_max=1000,
+        y_max=1000,
+        robot_radius=10.0,
+        grid_size=10.0)
+    x_min, x_max, y_min, y_max, map_width, map_height, sx, sy, gx, gy, grid_size, robot_radius = params
+        
     # set obstacle positions
     ox, oy = [], []
-    for i in range(-10, 60):
-        ox.append(i)
-        oy.append(-10.0)
-    for i in range(-10, 60):
-        ox.append(60.0)
-        oy.append(i)
-    for i in range(-10, 61):
-        ox.append(i)
-        oy.append(60.0)
-    for i in range(-10, 61):
-        ox.append(-10.0)
-        oy.append(i)
-    for i in range(-10, 40):
-        ox.append(20.0)
-        oy.append(i)
-    for i in range(0, 40):
-        ox.append(40.0)
-        oy.append(60.0 - i)
+    # map surroundings
+    ox, oy = place_wall_positions(ox, oy, x_min, x_max, y_min, y_max, grid_size)
+
+    # place obstacles
+    bit_map:np.ndarray = np.load('2D_bit_map.npy')
+    ox, oy = place_obstacles(ox, oy, bit_map, grid_size)
+    
 
     if show_animation:  # pragma: no cover
         plt.plot(ox, oy, ".k")
@@ -274,10 +328,13 @@ def main():
         plt.axis("equal")
 
     a_star = AStarPlanner(ox, oy, grid_size, robot_radius)
+    time_s = time.time()
     rx, ry = a_star.planning(sx, sy, gx, gy)
 
+    print(f"Time taken: {time.time() - time_s}")
+
     if show_animation:  # pragma: no cover
-        plt.plot(rx, ry, "-r")
+        plt.plot(rx, ry, ".-r")
         plt.pause(0.001)
         plt.show()
 

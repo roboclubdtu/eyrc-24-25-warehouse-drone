@@ -12,6 +12,7 @@ class ImageSubscriber(Node):
 
         self.subscription = self.create_subscription(
             Image, "/arena_display/output", self.image_callback, 10
+            # Image, "/whycon/image_out", self.image_callback, 10
         )
 
         self.bridge = CvBridge()
@@ -23,7 +24,9 @@ class ImageSubscriber(Node):
                 self.image_received = True
                 self.get_logger().info("Received an image!")
                 cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-                bit_map.create_2d_bitmap(cv_image)
+                bitmap = bit_map.create_2d_bitmap(cv_image, save_array=True, save_path="/home/dtu_dev/ws/pico_ws/src/swift_pico/src/bitmap/2D_bit_map.npy")
+                self.get_logger().info(f"Bitmap created! type: {type(bitmap)}, shape: {bitmap.shape}")
+                self.get_logger().info(f"value type: {type(bitmap[0][0])}")
 
                 # Clean up
                 self.get_logger().info("Shutting down after receiving one image.")

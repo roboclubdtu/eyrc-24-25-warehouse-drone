@@ -146,10 +146,10 @@ def clean_contours(contours):
     return [cnt for cnt in contours if cv2.contourArea(cnt) < max_area]
 
 
-def scale_contours(image):
+def scale_contours(image, factor=0.05):
     _, tresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
     distance = cv2.distanceTransform(tresh, cv2.DIST_L2, 5)
-    _, offset_thresh = cv2.threshold(distance, 0.05 * distance.max(), 255, 0)
+    _, offset_thresh = cv2.threshold(distance, factor * distance.max(), 255, 0)
     offset_thresh = np.uint8(offset_thresh)
     offset_contours, _ = cv2.findContours(
         offset_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
@@ -161,7 +161,7 @@ def scale_contours(image):
     return offset_thresh
 
 
-def create_2d_bitmap(image) -> bool:
+def create_2d_bitmap(image, save_array=False, save_path=None) -> np.ndarray:
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Processing Aruco markers
@@ -173,10 +173,13 @@ def create_2d_bitmap(image) -> bool:
     wp_image = apply_warp_perspective(cleaned_image, marker_coordinates, 1000)
 
     # Binarise the image, scale and find the contours
-    scaled_contours_image = scale_contours(wp_image)
+    scaled_contours_image = scale_contours(wp_image, factor=0.02)
 
     boolean_obsticales = scaled_contours_image == 0  # TODO: return?
 
-    cv2.imwrite(FILE_DIR_PATH + "/2D_bit_map.png", scaled_contours_image)
+    if save_path and save_array:
+        np.save(save_path, boolean_obsticales)
+        print(f"Saved the 2D bitmap to {save_path}")
+        cv2.imwrite(FILE_DIR_PATH + "/2D_bit_map.png", scaled_contours_image)
 
-    return True
+    return boolean_obsticales
