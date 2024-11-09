@@ -5,11 +5,12 @@ from geometry_msgs.msg import Pose, PoseArray
 from sensor_msgs.msg import Image
 from waypoint_navigation.srv import GetPath
 
+from typing import Tuple
 import numpy as np
 from cv_bridge import CvBridge
 
 # from swift_pico.scripts import bit_map
-from swift_pico.scripts import path_planning
+from swift_pico.scripts import path_planning, whycon_mapper
 # from swift_pico.scripts
 
 from pico_utils import BITMAP_PATH, PREDEFINED_WP_HEIGHT_M, coords_list_to_pose_array
@@ -27,9 +28,11 @@ class PathPlanningServer(Node):
 
         self.get_logger().info(f"'{self.get_name()}' node has been started.")
 
-    def path_planner_init(self):        
+    def path_planner_init(self):
+        self.get_logger().info("Path planner initializing...")   
         x_min, x_max, y_min, y_max, map_width, map_height, grid_size, robot_radius = \
-            path_planning.get_planner_init_params(x_max=1000, y_max=1000, robot_radius=10.0, grid_size=10.0)
+            path_planning.get_planner_init_params(
+                x_min = 0, x_max=1000, y_min=0, y_max=1000, robot_radius=10.0, grid_size=10.0)
         
         # set obstacle positions
         ox, oy = [], []
@@ -43,25 +46,7 @@ class PathPlanningServer(Node):
         self.get_logger().info("Path planner initialized")
 
     def ros_interfaces_init(self):
-        self.bit_map = None
-        self.cv_bridge = CvBridge()
-        self.subscription = self.create_subscription(
-            Image, "/arena_display/output", self.image_callback, 10
-        )
-
         self.srv = self.create_service(GetPath, 'GetPath', self.get_path_cb)
-
-    def image_callback(self, msg):
-        if not self.bit_map:
-            try:
-                self.get_logger().info("Received an image!")
-                cv_image = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
-                self.bit_map = bit_map.create_2d_bitmap(cv_image)
-                self.generate_map()
-                self.get_logger().info("bitmap created")
-
-            except Exception as e:
-                self.get_logger().error(f"Could not convert image: {e}")
 
     def get_path_cb(self, request:GetPath.Request, response:GetPath.Response):
         self.get_logger().info("Path planning request received")
@@ -73,12 +58,6 @@ class PathPlanningServer(Node):
         else:
             self.get_logger().error(f"waypoints are invalid. waypoints: {request.waypoints}")
         return response
-
-    def generate_map(self):
-        self.get_logger().info("Generating map")
-        # Generate the map
-        self.map = path_planning.generate_map(self.bit_map)
-        self.get_logger().info("Map generated")
 
     def get_waypoints(self):
         pose_array = PoseArray()
@@ -98,19 +77,39 @@ class PathPlanningServer(Node):
         return pose_array
 
     def waypoint_valid(self, waypoints:PoseArray):
-            if len(waypoints.poses) < 2:
-                self.get_logger().error("There should be at least two waypoints")
+            return True #BUG something wrong with this function
+            if len(waypoints.poses) >= 2:
+                self.get_logger().error(f"Waypoints len should be 2 not {len(waypoints.poses)}")
                 return False
-            wp1 = waypoints.poses[0].position
-            wp2 = waypoints.poses[1].position
-            if (wp1.x, wp1.y, wp1.z) == (wp2.x, wp2.y, wp2.z):
+            
+            if (waypoints.poses[0].position.x, waypoints.poses[0].position.y) == (waypoints.poses[1].position.x, waypoints.poses[1].position.y):
                 self.get_logger().error("Waypoints should not be the same coordinates")
                 return False
+            
+            if not (self.path_planner.min_x < waypoints.poses[0].position.x < self.path_planner.max_x) and \
+                (self.path_planner.min_y < waypoints.poses[0].position.y < self.path_planner.max_y ) and \
+                (self.path_planner.min_x < waypoints.poses[1].position.x < self.path_planner.max_x) and \
+                (self.path_planner.min_y < waypoints.poses[1].position.y < self.path_planner.max_y):
+                
+                self.get_logger().error("Waypoints should be within the map boundaries")
+                return False
+            
             return True
 
-    def plan_path(self, waypoints:PoseArray):
+    def plan_path(self, waypoints:PoseArray) -> PoseArray:
+        # NOTE: The plan is in image coordinates, needs to be converted to world coordinates
+        wp1 = waypoints.poses[0].position
+        wp2 = waypoints.poses[1].position
 
-        return dummy_path()
+        path_i, path_j = self.path_planner.planning(
+            sx=wp1.x, sy=wp1.y,
+            gx=wp2.x, gy=wp2.y)
+        
+        self.get_logger().info(f"Path found. Length: {len(path_i)}")
+        
+        path_x, path_y = whycon_mapper.pixel_to_whycon(np.array(path_i), np.array(path_j))
+
+        return coords_list_to_pose_array(list(zip(path_x, path_y)), constant_z=PREDEFINED_WP_HEIGHT_M)
     
 def main(args=None):
     rclpy.init(args=args)

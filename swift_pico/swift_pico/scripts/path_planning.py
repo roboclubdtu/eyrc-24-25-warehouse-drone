@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+
 """
+(Adapted from:)
 
 A* grid planning
 
@@ -14,8 +16,6 @@ import math
 import time
 import matplotlib.pyplot as plt
 import numpy as np
-show_animation = True
-
 
 class AStarPlanner:
 
@@ -286,12 +286,12 @@ def place_bitmap_obstacles(ox:list, oy:list, bit_map:np.ndarray, grid_size):
 
 def main():
     print(__file__ + " start!!")
+    show_animation = True
 
     params = get_planner_init_params(
-        x_max=1000,
-        y_max=1000,
-        robot_radius=10.0,
-        grid_size=10.0)
+        x_min = 0,x_max=1000,
+        y_min=0, y_max=1000,
+        robot_radius=10.0, grid_size=10.0)
     x_min, x_max, y_min, y_max, map_width, map_height, grid_size, robot_radius = params
         
     # set obstacle positions
@@ -319,6 +319,7 @@ def main():
     rx, ry = a_star.planning(sx, sy, gx, gy)
 
     print(f"Time taken: {time.time() - time_s}")
+    print(f"path length: {len(rx)}")
 
     if show_animation:  # pragma: no cover
         plt.plot(rx, ry, ".-r")

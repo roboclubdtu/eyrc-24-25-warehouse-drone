@@ -1,6 +1,8 @@
-def pixel_to_whycon(imgx, imgy):
-    goal_x= 0.02537*imgx - 12.66
-    goal_y= 0.02534*imgy - 12.57
-    goal_z= 27.0
-    goal = [goal_x, goal_y, goal_z]
-    return goal
+def pixel_to_whycon(img_i, img_j):
+    sx = (12.66 + 0.06)/500
+    sy = (12.57 + 0.09)/500
+
+    goal_x= sx*img_i - 12.66
+    goal_y= sy*img_j - 12.57
+    
+    return goal_x, goal_y

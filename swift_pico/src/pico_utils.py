@@ -71,13 +71,16 @@ def timestamp_pose(pose:Pose, stamp: Time):
 def coords_from_pose(pose:Pose):
     return (pose.position.x, pose.position.y, pose.position.z)
 
-def coords_list_to_pose_array(coords:list):
+def coords_list_to_pose_array(coords:list, constant_z=None):
     pose_array = PoseArray()
-    for x, y, z in coords:
+    for coord in coords:
         pose = Pose()
-        pose.position.x = x
-        pose.position.y = y
-        pose.position.z = z
+        pose.position.x = coord[0]
+        pose.position.y = coord[1]
+        if constant_z:
+            pose.position.z = constant_z
+        else:
+            pose.position.z = coord[2]
         pose.orientation.w = 1.0  # Default orientation
         pose_array.poses.append(pose)
     return pose_array

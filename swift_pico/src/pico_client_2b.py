@@ -59,6 +59,7 @@ class PicoClientNode(Node):
         state_fn[self.state]()
 
     def waypoints_sub_cb(self, msg:PoseArray):
+        # NOTE: The points are in image coordinates
         if not self.waypoints:
             self.waypoints = PoseArray()
             for i in range(0, len(msg.data), 2):
