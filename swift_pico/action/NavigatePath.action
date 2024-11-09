@@ -1,8 +1,0 @@
-# Goal
-geometry_msgs/Point[] path
----
-# Result
-bool path_completed
----
-# Feedback
-int32 next_point_idx

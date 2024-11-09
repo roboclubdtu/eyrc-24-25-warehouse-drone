@@ -1,9 +1,11 @@
 
 from rclpy.time import Time
 
-from geometry_msgs.msg import Pose, PoseStamped
+from geometry_msgs.msg import Pose, PoseStamped, PoseArray
 from enum import Enum, auto
 
+PREDEFINED_WP_HEIGHT_M = 27.0
+BITMAP_PATH = '/home/dtu_dev/ws/pico_ws/src/waypoint_navigation/map/2D_bit_map.npy'
 
 class PID:
     def __init__(self, sample_time, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2000.0, min_output=1000.0, offset=0.0):
@@ -68,3 +70,17 @@ def timestamp_pose(pose:Pose, stamp: Time):
 
 def coords_from_pose(pose:Pose):
     return (pose.position.x, pose.position.y, pose.position.z)
+
+def coords_list_to_pose_array(coords:list, constant_z=None):
+    pose_array = PoseArray()
+    for coord in coords:
+        pose = Pose()
+        pose.position.x = coord[0]
+        pose.position.y = coord[1]
+        if constant_z:
+            pose.position.z = constant_z
+        else:
+            pose.position.z = coord[2]
+        pose.orientation.w = 1.0  # Default orientation
+        pose_array.poses.append(pose)
+    return pose_array

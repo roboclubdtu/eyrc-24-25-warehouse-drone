@@ -8,10 +8,10 @@
   <license>TODO: License declaration</license>
   <author>Arun P Madhu</author>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
-  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <!-- <buildtool_depend>ament_cmake</buildtool_depend> -->
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  <exec_depend>ament_cmake_python</exec_depend>
 
-  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <depend>action_msgs</depend>
   <depend>swift_msgs</depend>
