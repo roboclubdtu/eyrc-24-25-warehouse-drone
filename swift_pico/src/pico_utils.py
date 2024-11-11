@@ -16,7 +16,9 @@ class PID:
 
         self.error = 0
         self.offset = offset
-        
+
+        self.d_filter_alpha = 0.8  # Filter coefficient (0.0-1.0)
+        self.filtered_derivative = 0.0
         self.reset()
     
     def set_gains(self, Kp, Ki, Kd):
@@ -26,11 +28,20 @@ class PID:
 
     def compute(self, setpoint, current_value, clip_output=False):
         error = setpoint - current_value
+        
+        # Calculate integral term
         self.integral += error * self.sample_time
+        
+        # Calculate and filter derivative term
         derivative = (error - self.prev_error) / self.sample_time
-
-        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
-
+        self.filtered_derivative = (self.d_filter_alpha * self.filtered_derivative + 
+                                  (1.0 - self.d_filter_alpha) * derivative)
+        
+        # Calculate output using filtered derivative
+        output = (self.Kp * error + 
+                 self.Ki * self.integral + 
+                 self.Kd * self.filtered_derivative)
+        
         output += self.offset
         
         if clip_output:

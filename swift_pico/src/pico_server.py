@@ -18,12 +18,12 @@ from geometry_msgs.msg import PoseArray, Pose, PoseStamped
 from pico_utils import ServerStates, PID, timestamp_pose, coords_from_pose
 from waypoint_navigation.action import NavToWaypoint
 
-SAMPLE_TIME_S = 0.060 # QUESTION: When running `ros2 topic hz /whycon/poses` the rate is 30 Hz. That means a period of 0.0333 seconds. Why is the sample time set to 0.060 seconds?
+SAMPLE_TIME_S = 0.033 # QUESTION: When running `ros2 topic hz /whycon/poses` the rate is 30 Hz. That means a period of 0.0333 seconds. Why is the sample time set to 0.060 seconds?
 
 PID_VALS = {
     'roll': {'P': 10.0, 'I': 0.0, 'D': 35.0},
     'pitch': {'P': 10.0, 'I': 0.0, 'D': 35.0},
-    'throttle': {'P': 18.0, 'I': 0.0, 'D': 36.0}
+    'throttle': {'P': 18.0, 'I': 0.0, 'D': 20.0}
 }
 
 X_TOLERANCE = 0.15
@@ -149,6 +149,7 @@ class PicoServerNode(Node):
         self.cmd.rc_roll =  int(self.roll_controller.compute(self.goal_pose.position.x, _current_x))
         self.cmd.rc_pitch =  int(self.pitch_controller.compute(self.goal_pose.position.y, _current_y))
         self.cmd.rc_throttle =  int(self.throttle_controller.compute(self.goal_pose.position.z, _current_z))
+        #self.get_logger().info(f"Roll: {self.cmd.rc_roll}, Pitch: {self.cmd.rc_pitch}, Throttle: {self.cmd.rc_throttle}")
         # /refactor code 
 
         self.command_pub.publish(self.cmd)
@@ -160,9 +161,13 @@ class PicoServerNode(Node):
         pid_error_msg.roll_error = self.roll_controller.error
         pid_error_msg.pitch_error = self.pitch_controller.error
         pid_error_msg.throttle_error = self.throttle_controller.error
+        pid_error_msg.rc_roll = self.cmd.rc_roll 
+        pid_error_msg.rc_pitch = self.cmd.rc_pitch
+        pid_error_msg.rc_throttle = self.cmd.rc_throttle 
         # /refactor code
 
         self.pid_error_pub.publish(pid_error_msg)
+        
    
     def controllers_init(self):
         self.roll_controller = PID(sample_time=SAMPLE_TIME_S, offset=1500)

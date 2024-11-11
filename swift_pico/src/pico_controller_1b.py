@@ -192,7 +192,7 @@ class PicoControllerNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    swift_pico =    PicoControllerNode()
+    swift_pico = PicoControllerNode()
     rclpy.spin(swift_pico)
     swift_pico.destroy_node()
     rclpy.shutdown()

@@ -122,6 +122,7 @@ install(PROGRAMS
   scripts/map.py
   src/pico_client.py
   src/pico_server.py
+  src/pico_utils.py
   src/waypoint_service.py
   scripts/bit_map.py
   src/pico_client_2b.py

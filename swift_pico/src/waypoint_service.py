@@ -34,9 +34,8 @@ class WaypointsServer(Node):
         pose_array = PoseArray()
         # Populate the waypoints
         coordinates = [
-            [0.0, 0.0, 25.0],
-            [0.0, 0.0, 20.0],
-            # [2.0, 2.0, 27.0],
+            [2.0, 2.0, 25.0]
+            # [2.0, 2.0, 20.0],
             # [2.0, -2.0, 27.0],
             # [-2.0, -2.0, 27.0],
             # [-2.0, 2.0, 27.0],
